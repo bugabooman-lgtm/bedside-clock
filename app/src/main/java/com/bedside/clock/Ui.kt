@@ -173,22 +173,28 @@ fun Activity.immersive() {
 fun <T> Context.dropdown(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit): View {
     val ctx = this
     val labels = options.map { it.second }
-    val adapter = object : android.widget.ArrayAdapter<String>(ctx, android.R.layout.simple_spinner_item, labels) {
-        private fun style(v: View, dropdown: Boolean): View {
-            (v as? TextView)?.let {
-                it.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                it.setTextColor(Col.TEXT)
-                it.setPadding(ctx.dp(16), ctx.dp(if (dropdown) 14 else 10), ctx.dp(16), ctx.dp(if (dropdown) 14 else 10))
-                if (dropdown) it.setBackgroundColor(Col.PANEL2)
-            }
-            return v
+    // our own rows, sized to their text (Android's built-in rows have a fixed height that clips large text)
+    val adapter = object : android.widget.BaseAdapter() {
+        override fun getCount() = labels.size
+        override fun getItem(position: Int): Any = labels[position]
+        override fun getItemId(position: Int) = position.toLong()
+        private fun row(position: Int, convertView: View?, dropdown: Boolean): View {
+            val t = (convertView as? TextView) ?: TextView(ctx)
+            t.text = labels[position]
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            t.setTextColor(Col.TEXT)
+            t.includeFontPadding = true
+            t.maxLines = 1
+            t.gravity = Gravity.CENTER_VERTICAL
+            t.minHeight = ctx.dp(if (dropdown) 52 else 44)
+            t.setPadding(ctx.dp(16), ctx.dp(if (dropdown) 12 else 8), ctx.dp(16), ctx.dp(if (dropdown) 12 else 8))
+            t.setBackgroundColor(if (dropdown) Col.PANEL2 else 0)
+            t.layoutParams = android.widget.AbsListView.LayoutParams(MATCH, WRAP)
+            return t
         }
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
-            style(super.getView(position, convertView, parent), false)
-        override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View =
-            style(super.getDropDownView(position, convertView, parent), true)
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View = row(position, convertView, false)
+        override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View = row(position, convertView, true)
     }
-    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
     val spinner = android.widget.Spinner(this, android.widget.Spinner.MODE_DROPDOWN)
     spinner.adapter = adapter
     spinner.background = roundBg(Col.PANEL2, dp(12).toFloat(), Col.LINE, dp(1))
