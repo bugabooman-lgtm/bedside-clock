@@ -3,6 +3,13 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.4" to listOf(
+            "Updates: Settings → Updates → Check for updates",
+            "Automatic updates — installed only in the daytime, never during night hours or within 90 minutes of an alarm",
+            "“What's new” message after each update",
+            "The clock can reopen itself after an update or restart (switch on “Appear on top” for Bedside Clock)",
+            "Clock screen shows a note when an update is available"
+        ),
         "1.3.1" to listOf(
             "The colon in the time now sits exactly in the middle of the screen"
         ),

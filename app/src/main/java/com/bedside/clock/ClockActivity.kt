@@ -45,6 +45,7 @@ class ClockActivity : Activity() {
     private lateinit var nextView: TextView
     private lateinit var weatherView: TextView
     private lateinit var sleepChip: TextView
+    private lateinit var updateChip: TextView
     private lateinit var bar: LinearLayout
     private lateinit var sunrise: View
 
@@ -127,6 +128,15 @@ class ClockActivity : Activity() {
             topMargin = dp(18); rightMargin = dp(22)
         })
 
+        updateChip = tv("", 16f, Col.ACCENT)
+        updateChip.setPadding(dp(14), dp(8), dp(14), dp(8))
+        updateChip.background = roundBg(Col.PANEL, dp(20).toFloat(), Col.LINE, dp(1))
+        updateChip.visibility = View.GONE
+        updateChip.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        root.addView(updateChip, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START).apply {
+            topMargin = dp(16); leftMargin = dp(18)
+        })
+
         bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER
@@ -169,6 +179,21 @@ class ClockActivity : Activity() {
         showBar()
         handler.removeCallbacks(tick)
         handler.post(tick)
+        showWhatsNew()
+    }
+
+    /** After an update, show what changed (once per version). */
+    private fun showWhatsNew() {
+        val now = Updater.currentVersion(this)
+        val seen = Store.getStr(this, "seenVersion", "")
+        Store.put(this, "seenVersion", now)
+        if (seen.isEmpty() || seen == now) return
+        val entry = Changelog.entries.firstOrNull { it.first == now } ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Updated to version $now")
+            .setMessage(entry.second.joinToString("\n\n") { "•  $it" })
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     override fun onPause() {
@@ -218,6 +243,17 @@ class ClockActivity : Activity() {
         }
         applyLighting(nowMin, force)
         updateSleepChip()
+        if (nowMin != lastUpdTick) { lastUpdTick = nowMin; Updater.tick(this) }
+        val upd = Updater.available
+        if (upd != null && !Updater.busy && (!Updater.autoOn(this) || !Updater.canInstall(this) || Updater.needsConfirm)) {
+            updateChip.text = "⬆  Version ${upd.version} available — tap"
+            updateChip.visibility = View.VISIBLE
+        } else if (Updater.busy && Updater.status.isNotEmpty()) {
+            updateChip.text = Updater.status
+            updateChip.visibility = View.VISIBLE
+        } else {
+            updateChip.visibility = View.GONE
+        }
         maybeRefreshWeather()
     }
 
@@ -264,6 +300,7 @@ class ClockActivity : Activity() {
     }
 
     private var isNightRendered = false
+    private var lastUpdTick = -1
 
     /** (clock colour, small-text colour) for the dimmed screen. */
     private fun dimColors(): Pair<Int, Int> = when (Store.getStr(this, "dimColor", "red")) {

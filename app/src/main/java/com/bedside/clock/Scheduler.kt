@@ -72,5 +72,14 @@ class AlarmReceiver : BroadcastReceiver() {
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, intent: Intent) {
         Scheduler.reschedule(c)
+        val updated = intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
+        val booted = intent.action == Intent.ACTION_BOOT_COMPLETED
+        if (updated) Updater.notifyUpdated(c, Updater.currentVersion(c))
+        // Bring the clock back on screen (Android only allows this with "Appear on top" switched on)
+        if ((updated || booted) && Store.getBool(c, "autoOpen", true) && android.provider.Settings.canDrawOverlays(c)) {
+            try {
+                c.startActivity(Intent(c, ClockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) {}
+        }
     }
 }

@@ -22,6 +22,17 @@ import android.widget.TextView
 class SettingsActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var locationLabel: TextView
+    private lateinit var updStatus: TextView
+    private lateinit var installBtn: TextView
+    private val statusTick = object : Runnable {
+        override fun run() {
+            if (Updater.busy && Updater.status.isNotEmpty()) updStatus.text = Updater.status
+            else if (Updater.status.isNotEmpty() && !Updater.busy && Updater.status != lastShown) updStatus.text = Updater.status
+            lastShown = updStatus.text.toString()
+            handler.postDelayed(this, 1000)
+        }
+    }
+    private var lastShown = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -130,6 +141,43 @@ class SettingsActivity : Activity() {
         }
         add(settingRow("Keep screen on while charging", "Developer options → Stay awake (optional — the clock already keeps the screen on while it's open)", null))
 
+        // ---- updates ----
+        section("Updates")
+        val autoSwitch = Switch(this)
+        autoSwitch.isChecked = Updater.autoOn(this)
+        autoSwitch.setOnCheckedChangeListener { _, on -> Store.put(this, "autoUpdate", on) }
+        add(settingRow("Install updates automatically",
+            "Checks every 6 hours. Installs between 9 AM and 9 PM only — never during night hours or within 90 minutes of an alarm.",
+            autoSwitch))
+        updStatus = tv(lastCheckedText(), 15f, Col.DIM)
+        val checkRow = LinearLayout(this)
+        checkRow.orientation = LinearLayout.HORIZONTAL
+        checkRow.gravity = Gravity.CENTER_VERTICAL
+        checkRow.addView(button("Check for updates") { checkNow() })
+        installBtn = button("Install now", primary = true) {
+            val info = Updater.available
+            if (info != null) startInstall(info)
+        }
+        installBtn.visibility = if (Updater.available != null) android.view.View.VISIBLE else android.view.View.GONE
+        checkRow.addView(installBtn, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(12) })
+        checkRow.addView(updStatus, LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(18) })
+        checkRow.setPadding(0, dp(12), 0, dp(12))
+        add(checkRow)
+        add(settingRow("Allow the app to install its updates", "One-time: switch on “Allow from this source”", button("Open") {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {}
+        }))
+        val reopen = Switch(this)
+        reopen.isChecked = Store.getBool(this, "autoOpen", true)
+        reopen.setOnCheckedChangeListener { _, on ->
+            Store.put(this, "autoOpen", on)
+            if (on && !Settings.canDrawOverlays(this)) openOverlaySettings()
+        }
+        add(settingRow("Reopen the clock after updates and restarts",
+            "Needs “Appear on top” switched on for Bedside Clock — tap the switch to open that setting",
+            reopen))
+
         // ---- about ----
         section("About")
         add(settingRow("Bedside Clock", versionText(), button("Change log") { showChangelog() }))
@@ -140,6 +188,12 @@ class SettingsActivity : Activity() {
     override fun onResume() {
         super.onResume()
         immersive()
+        handler.post(statusTick)
+    }
+
+    override fun onPause() {
+        handler.removeCallbacks(statusTick)
+        super.onPause()
     }
 
     private fun timeButton(key: String, minutes: Int): TextView {
@@ -221,6 +275,53 @@ class SettingsActivity : Activity() {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         } catch (_: Exception) {}
         toast("Already unrestricted. In App info → Battery, make sure it says Unrestricted.")
+    }
+
+    private fun lastCheckedText(): String {
+        val t = Store.getLong(this, "updLastCheck", 0L)
+        val now = "You have version ${Updater.currentVersion(this)}."
+        if (t == 0L) return now
+        val mins = ((System.currentTimeMillis() - t) / 60_000L).toInt()
+        val ago = when {
+            mins < 1 -> "just now"
+            mins < 60 -> "$mins min ago"
+            mins < 48 * 60 -> "${mins / 60} hr ago"
+            else -> "${mins / 1440} days ago"
+        }
+        return "$now Last checked $ago."
+    }
+
+    private fun checkNow() {
+        updStatus.text = "Checking…"
+        Updater.status = ""
+        Updater.check(this) { info, ok ->
+            when {
+                !ok -> updStatus.text = "Couldn't reach GitHub. Check that Wi-Fi is on."
+                info == null -> updStatus.text = "You're up to date (version ${Updater.currentVersion(this)})."
+                else -> updStatus.text = "Version ${info.version} is available."
+            }
+            installBtn.visibility = if (info != null) android.view.View.VISIBLE else android.view.View.GONE
+        }
+    }
+
+    private fun startInstall(info: Updater.Info) {
+        if (!Updater.canInstall(this)) {
+            toast("First allow Bedside Clock to install updates: switch on “Allow from this source”, then come back and tap Install now.")
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {}
+            return
+        }
+        if (AlarmService.running) { toast("Wait until the alarm is off."); return }
+        Updater.needsConfirm = false
+        Updater.install(this, info)
+        updStatus.text = Updater.status
+    }
+
+    private fun openOverlaySettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        } catch (_: Exception) {}
     }
 
     private fun versionText(): String {
