@@ -47,8 +47,12 @@ class ClockActivity : Activity() {
 
     private var lastMin = -1
     private var peekUntil = 0L
-    private var manualDim = false
+    private var dimOverride: Boolean? = null   // null = follow the night schedule
+    private var lastScheduled: Boolean? = null
+    private var dimWanted = false
     private var isNight = false
+    private lateinit var dimBtn: TextView
+    private lateinit var sunView: TextView
     private var weatherAt = 0L
     private var weatherText = ""
     private var tts: TextToSpeech? = null
@@ -97,6 +101,9 @@ class ClockActivity : Activity() {
         center.addView(dateView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
         center.addView(nextView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(10) })
         center.addView(weatherView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(6) })
+        sunView = tv("", 20f, Col.DIM)
+        sunView.gravity = Gravity.CENTER
+        center.addView(sunView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(6) })
         root.addView(center, FrameLayout.LayoutParams(MATCH, MATCH))
 
         sleepChip = tv("", 16f, 0xFF7CC4FF.toInt())
@@ -108,19 +115,22 @@ class ClockActivity : Activity() {
         bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER
-        fun barBtn(label: String, action: () -> Unit) {
+        fun barBtn(label: String, action: () -> Unit): TextView {
             val b = button(label) { action() }
             b.background = roundBg(Col.PANEL, dp(30).toFloat(), Col.LINE, dp(1))
             bar.addView(b, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(7); rightMargin = dp(7) })
+            return b
         }
         barBtn("⏰  Alarms") { startActivity(Intent(this, AlarmsActivity::class.java)) }
         barBtn("🎤  Voice") { listen() }
         barBtn("☾  Sleep sounds") { sleepDialog() }
-        barBtn("◐  Dim") {
-            manualDim = !manualDim
+        dimBtn = barBtn("◐  Dim: Off") {
+            dimOverride = !dimWanted
             peekUntil = 0L
             update(true)
+            toast(if (dimWanted) "Dim on — hold the Dim button to change brightness" else "Dim off")
         }
+        dimBtn.setOnLongClickListener { dimDialog(); true }
         barBtn("⚙  Settings") { startActivity(Intent(this, SettingsActivity::class.java)) }
         root.addView(bar, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = dp(20) })
 
@@ -158,11 +168,13 @@ class ClockActivity : Activity() {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            val r = android.graphics.Rect()
+            val onBar = bar.visibility == View.VISIBLE && bar.alpha > 0.5f &&
+                bar.getGlobalVisibleRect(r) && r.contains(ev.rawX.toInt(), ev.rawY.toInt())
             showBar()
-            if (isNight) {
-                // tap at night: brighten for 15 seconds
+            if (isNight && !onBar) {
+                // tap the clock while dimmed: brighten for 15 seconds
                 peekUntil = System.currentTimeMillis() + 15_000L
-                manualDim = false
                 update(true)
             }
         }
@@ -189,7 +201,7 @@ class ClockActivity : Activity() {
             center.translationX = Random.nextInt(-dp(14), dp(14) + 1).toFloat()
             center.translationY = Random.nextInt(-dp(10), dp(10) + 1).toFloat()
         }
-        applyLighting(nowMin)
+        applyLighting(nowMin, force)
         updateSleepChip()
         maybeRefreshWeather()
     }
@@ -200,7 +212,7 @@ class ClockActivity : Activity() {
         val s = SpannableString(full)
         if (ampm.isNotEmpty()) {
             s.setSpan(RelativeSizeSpan(0.18f), main.length, full.length, 0)
-            s.setSpan(ForegroundColorSpan(if (isNight) Col.NIGHT_DIM else Col.DIM), main.length, full.length, 0)
+            s.setSpan(ForegroundColorSpan(if (isNight) dimColors().second else Col.DIM), main.length, full.length, 0)
         }
         clock.text = s
         fitClock()
@@ -210,6 +222,7 @@ class ClockActivity : Activity() {
             (if (n.snoozed) "⏰  Snoozed until " else "⏰  ") + fmtMillis(this, n.at) + " · " + untilText(n.at)
         }
         weatherView.text = weatherText
+        sunView.text = if (Store.getBool(this, "sunShow", true)) Sun.line(this) else ""
     }
 
     /** Makes the digits as big as the screen allows. */
@@ -228,7 +241,16 @@ class ClockActivity : Activity() {
         clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
     }
 
-    private fun applyLighting(nowMin: Int) {
+    private var isNightRendered = false
+
+    /** (clock colour, small-text colour) for the dimmed screen. */
+    private fun dimColors(): Pair<Int, Int> = when (Store.getStr(this, "dimColor", "red")) {
+        "amber" -> Pair(0xFFFFA040.toInt(), 0xFF7A4A18.toInt())
+        "grey" -> Pair(0xFFA8A8A8.toInt(), 0xFF555555.toInt())
+        else -> Pair(Col.NIGHT, Col.NIGHT_DIM)
+    }
+
+    private fun applyLighting(nowMin: Int, force: Boolean = false) {
         val n = Scheduler.next(this)
         var sun = 0f
         if (n != null && !n.snoozed && n.alarm.sunriseMin > 0) {
@@ -238,14 +260,21 @@ class ClockActivity : Activity() {
         sunrise.alpha = sun * 0.92f
 
         val scheduledNight = Store.nightOn(this) && inRange(nowMin, Store.nightFrom(this), Store.nightTo(this))
-        val night = sun == 0f && System.currentTimeMillis() > peekUntil && (scheduledNight || manualDim)
-        if (night != isNight) {
+        // a manual Dim on/off lasts until the night schedule next starts or ends
+        if (lastScheduled != null && lastScheduled != scheduledNight) dimOverride = null
+        lastScheduled = scheduledNight
+        dimWanted = dimOverride ?: scheduledNight
+        dimBtn.text = if (dimWanted) "◐  Dim: On" else "◐  Dim: Off"
+        val night = sun == 0f && System.currentTimeMillis() > peekUntil && dimWanted
+        if (night != isNight || force) {
             isNight = night
-            clock.setTextColor(if (night) Col.NIGHT else Col.CLOCK)
-            dateView.setTextColor(if (night) Col.NIGHT_DIM else Col.DIM)
-            nextView.setTextColor(if (night) Col.NIGHT_DIM else Col.ACCENT)
-            weatherView.setTextColor(if (night) Col.NIGHT_DIM else Col.DIM)
-            lastMin = -1 // re-render AM/PM colour
+            val (bright, faint) = dimColors()
+            clock.setTextColor(if (night) bright else Col.CLOCK)
+            dateView.setTextColor(if (night) faint else Col.DIM)
+            nextView.setTextColor(if (night) faint else Col.ACCENT)
+            weatherView.setTextColor(if (night) faint else Col.DIM)
+            sunView.setTextColor(if (night) faint else Col.DIM)
+            if (night != isNightRendered) { isNightRendered = night; lastMin = -1 } // re-render AM/PM colour
         }
 
         val nightLevel = Store.nightBright(this).coerceAtLeast(0.004f)
@@ -273,7 +302,7 @@ class ClockActivity : Activity() {
     }
 
     private fun maybeRefreshWeather() {
-        if (Store.weatherName(this).isEmpty()) {
+        if (Store.weatherName(this).isEmpty() || !Store.getBool(this, "wShow", true)) {
             if (weatherText.isNotEmpty()) { weatherText = ""; weatherView.text = "" }
             return
         }
@@ -291,6 +320,46 @@ class ClockActivity : Activity() {
                 weatherAt = now - 25 * 60_000L // try again in ~5 minutes
             }
         }.start()
+    }
+
+    // ---------------- dim brightness ----------------
+
+    /** Quick slider for how bright the dimmed screen is (and its colour). Dims the screen while open so you can see it. */
+    private fun dimDialog() {
+        val before = dimOverride
+        dimOverride = true
+        peekUntil = 0L
+        update(true)
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(28), dp(18), dp(28), dp(6))
+        box.addView(tv("Dim brightness", 24f))
+        box.addView(tv("Slide to set how bright the screen is when dimmed", 15f, Col.DIM))
+        val seek = SeekBar(this)
+        seek.max = 100
+        seek.progress = (Store.nightBright(this) / 0.3f * 100).toInt().coerceIn(0, 100)
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                Store.put(this@ClockActivity, "nightBright", p / 100f * 0.3f)
+                update(true)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) {}
+            override fun onStopTrackingTouch(sb: SeekBar) {}
+        })
+        box.addView(seek, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(18); bottomMargin = dp(10) })
+        box.addView(settingRow("Dim colour", null,
+            choice(listOf("red" to "Red", "amber" to "Amber", "grey" to "Grey"), Store.getStr(this, "dimColor", "red")) {
+                Store.put(this, "dimColor", it)
+                update(true)
+            }))
+        AlertDialog.Builder(this)
+            .setView(box)
+            .setPositiveButton("Done", null)
+            .setOnDismissListener {
+                dimOverride = before
+                update(true)
+            }
+            .show()
     }
 
     // ---------------- sleep sounds ----------------
@@ -339,14 +408,34 @@ class ClockActivity : Activity() {
             .show()
     }
 
+    private fun locateNow() {
+        Where.locate(this) { name ->
+            if (name != null) {
+                weatherAt = 0L
+                update(true)
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val i = permissions.indexOf(Where.PERMISSION)
+        if (i >= 0 && grantResults.getOrNull(i) == PackageManager.PERMISSION_GRANTED) locateNow()
+    }
+
     // ---------------- permissions ----------------
 
     private fun askPermissions() {
+        val wanted = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1)
+        ) wanted.add("android.permission.POST_NOTIFICATIONS")
+        // First run: find where the tablet is, for sunrise, sunset and weather
+        if (!Where.hasLocation(this) && !Store.getBool(this, "locAsked", false)) {
+            Store.put(this, "locAsked", true)
+            if (Where.hasPermission(this)) locateNow() else wanted.add(Where.PERMISSION)
         }
+        if (wanted.isNotEmpty()) requestPermissions(wanted.toTypedArray(), 1)
         if (Build.VERSION.SDK_INT >= 34) {
             val nm = getSystemService(NotificationManager::class.java)
             if (!nm.canUseFullScreenIntent()) {

@@ -23,6 +23,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Read version
+        run: echo "APP_VERSION=$(cat VERSION)" >> $GITHUB_ENV
+
       - name: Build
         run: gradle assembleRelease --no-daemon --stacktrace
 
@@ -32,8 +35,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Bedside Clock 1.0.${{ github.run_number }}
+          tag_name: v${{ env.APP_VERSION }}-build${{ github.run_number }}
+          name: Bedside Clock ${{ env.APP_VERSION }} (build ${{ github.run_number }})
           body: Download BedsideClock.apk on the tablet and open it to install or update.
           files: BedsideClock.apk
           make_latest: true

@@ -4,6 +4,7 @@ plugins {
 }
 
 val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+val appVersion = rootProject.file("VERSION").readText().trim()
 
 android {
     namespace = "com.bedside.clock"
@@ -14,7 +15,7 @@ android {
         minSdk = 30
         targetSdk = 34
         versionCode = buildNumber
-        versionName = "1.0.$buildNumber"
+        versionName = appVersion
     }
 
     // A fixed signing key so each new build installs over the old one (keeps your alarms).
