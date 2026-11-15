@@ -3,6 +3,13 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.7" to listOf(
+            "New Calendar watch face: day of the week (with 24-hour scale) at 9, month (with leap-year scale) at 3, date at 6",
+            "Calendar face shows tonight's real moon phase in a starry window",
+            "Classic face date window can now show the month: “NOV 14” or “SAT NOV 14”",
+            "Pick the layout in Settings → Analog Face → Face layout",
+            "Tab names capitalized; American spelling (color)"
+        ),
         "1.6.1" to listOf(
             "Settings now has tabs: General, Analog face, and Updates & about",
             "Analog face tab shows a live preview while you change the options",
@@ -12,7 +19,7 @@ object Changelog {
             "Analog clock redesigned like a real watch: metal bezel, dial with depth, minute track, tapered hands with shadows",
             "The date now sits in a window at 3 o'clock on the analog face",
             "Analog clock is bigger",
-            "New analog options: 7 dial colours, second hand colour, numbers (1 2 3, Roman, 12·3·6·9, markers, dots), 4 fonts, date window style"
+            "New analog options: 7 dial colors, second hand color, numbers (1 2 3, Roman, 12·3·6·9, markers, dots), 4 fonts, date window style"
         ),
         "1.5.1" to listOf(
             "Flip clock: with the leading 0 switched off, the first card stays as a blank card",
@@ -39,7 +46,7 @@ object Changelog {
         "1.3" to listOf(
             "The Dim button now switches dimming on and off — it works during night hours too",
             "Dim brightness setting, plus a quick brightness slider: press and hold the Dim button",
-            "Choose the dim colour: red, amber or grey",
+            "Choose the dim color: red, amber or grey",
             "Sunrise and sunset times on the clock screen",
             "Uses the tablet's own location (or a city you type in) for sunrise, sunset and weather",
             "Weather can be switched on or off without losing your location",

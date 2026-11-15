@@ -374,8 +374,9 @@ class ClockActivity : Activity() {
         analogView.numerals = Store.getStr(this, "anNumerals", "arabic")
         analogView.fontKey = Store.getStr(this, "anFont", "modern")
         analogView.dateMode = Store.getStr(this, "anDate", "daydate")
+        analogView.layoutKey = Store.getStr(this, "anLayout", "classic")
         // the date lives inside the analog face (unless its date window is off)
-        if (style == "analog" && analogView.dateMode != "off") dateView.visibility = View.GONE
+        if (style == "analog" && (analogView.dateMode != "off" || analogView.layoutKey == "calendar")) dateView.visibility = View.GONE
         faceColors(isNight)
         lastMin = -1
         fitClock()
@@ -516,7 +517,7 @@ class ClockActivity : Activity() {
             override fun onStopTrackingTouch(sb: SeekBar) {}
         })
         box.addView(seek, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(18); bottomMargin = dp(10) })
-        box.addView(settingRow("Dim colour", null,
+        box.addView(settingRow("Dim color", null,
             choice(listOf("red" to "Red", "amber" to "Amber", "grey" to "Grey"), Store.getStr(this, "dimColor", "red")) {
                 Store.put(this, "dimColor", it)
                 update(true)

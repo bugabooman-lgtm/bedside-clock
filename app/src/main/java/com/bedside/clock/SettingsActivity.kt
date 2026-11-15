@@ -65,7 +65,7 @@ class SettingsActivity : Activity() {
             Store.put(this, "settingsTab", key)
         }
         val startTab = intent.getStringExtra("tab") ?: Store.getStr(this, "settingsTab", "general")
-        val tabBar = choice(listOf("general" to "General", "analog" to "Analog face", "updates" to "Updates & about"), startTab) { showTab(it) }
+        val tabBar = choice(listOf("general" to "General", "analog" to "Analog Face", "updates" to "Updates & About"), startTab) { showTab(it) }
         outer.addView(tabBar, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(16); bottomMargin = dp(4) })
         outer.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
 
@@ -101,6 +101,7 @@ class SettingsActivity : Activity() {
             preview.numerals = Store.getStr(this, "anNumerals", "arabic")
             preview.fontKey = Store.getStr(this, "anFont", "modern")
             preview.dateMode = Store.getStr(this, "anDate", "daydate")
+            preview.layoutKey = Store.getStr(this, "anLayout", "classic")
             preview.showSeconds = Store.getBool(this, "analogSeconds", true)
             preview.invalidate()
         }
@@ -122,11 +123,12 @@ class SettingsActivity : Activity() {
         fun pick(title: String, key: String, def: String, opts: List<Pair<String, String>>) {
             add(settingRow(title, null, choice(opts, Store.getStr(this, key, def)) { Store.put(this, key, it); refreshPreview() }))
         }
-        pick("Dial colour", "anDial", "black", AnalogOpts.DIALS.map { it.first to it.second })
-        pick("Second hand colour", "anAccent", "orange", AnalogOpts.ACCENT_NAMES)
+        pick("Face layout", "anLayout", "classic", AnalogOpts.LAYOUTS)
+        pick("Dial color", "anDial", "black", AnalogOpts.DIALS.map { it.first to it.second })
+        pick("Hand accent color", "anAccent", "orange", AnalogOpts.ACCENT_NAMES)
         pick("Numbers", "anNumerals", "arabic", AnalogOpts.NUMERALS)
         pick("Number font", "anFont", "modern", AnalogOpts.FONTS)
-        pick("Date window", "anDate", "daydate", AnalogOpts.DATES)
+        pick("Date window (Classic layout)", "anDate", "daydate", AnalogOpts.DATES)
         val secSwitch = Switch(this)
         secSwitch.isChecked = Store.getBool(this, "analogSeconds", true)
         secSwitch.setOnCheckedChangeListener { _, on -> Store.put(this, "analogSeconds", on); refreshPreview() }
@@ -158,7 +160,7 @@ class SettingsActivity : Activity() {
         add(settingRow("Night ends", null, timeButton("nightTo", Store.nightTo(this))))
         add(settingRow("Dim brightness", "How bright the screen is when dimmed (left = darkest). Tip: hold the Dim button on the clock to adjust while you watch.",
             seek(Store.nightBright(this) / 0.3f, 0f) { v, _ -> Store.put(this, "nightBright", v * 0.3f) }))
-        add(settingRow("Dim colour", null,
+        add(settingRow("Dim color", null,
             choice(listOf("red" to "Red", "amber" to "Amber", "grey" to "Grey"), Store.getStr(this, "dimColor", "red")) {
                 Store.put(this, "dimColor", it)
             }))

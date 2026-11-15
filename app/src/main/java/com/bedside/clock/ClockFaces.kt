@@ -268,7 +268,10 @@ object AnalogOpts {
     val ACCENT_NAMES = listOf("orange" to "Orange", "red" to "Red", "gold" to "Gold", "blue" to "Blue", "ink" to "Same as hands")
     val NUMERALS = listOf("arabic" to "1 2 3", "roman" to "I II III", "quarters" to "12 · 3 · 6 · 9", "markers" to "Markers", "dots" to "Dots")
     val FONTS = listOf("modern" to "Modern", "classic" to "Classic", "bold" to "Bold", "mono" to "Typewriter")
-    val DATES = listOf("daydate" to "Day + date", "date" to "Date only", "off" to "Off")
+    val DATES = listOf(
+        "daydate" to "SAT 14", "date" to "14", "monthdate" to "NOV 14", "full" to "SAT NOV 14", "off" to "Off"
+    )
+    val LAYOUTS = listOf("classic" to "Classic", "calendar" to "Calendar (day, month, date, moon)")
 
     fun typeface(key: String): Typeface = when (key) {
         "classic" -> Typeface.create(Typeface.SERIF, Typeface.NORMAL)
@@ -285,6 +288,7 @@ class AnalogClockView(c: Context) : View(c) {
     var numerals = "arabic"
     var fontKey = "modern"
     var dateMode = "daydate"
+    var layoutKey = "classic"
     var showSeconds = true
     var night = false
     var nightBright = 0xFFFF5A3C.toInt()
@@ -349,13 +353,29 @@ class AnalogClockView(c: Context) : View(c) {
         }
 
         // ---- hour indices and numerals ----
-        val dateAtThree = dateMode != "off"
+        val calendar = layoutKey == "calendar"
+        val dateAtThree = dateMode != "off" && !calendar
         txt.typeface = face
         txt.color = ink
         for (hr in 0 until 12) {
             val a = Math.toRadians(hr * 30.0)
             val n = if (hr == 0) 12 else hr
             val isQuarter = hr % 3 == 0
+            if (calendar) {
+                // big numerals; 3, 6 and 9 (and 5, 7) give way to the calendar dials
+                p.style = Paint.Style.STROKE
+                p.color = ink; p.strokeWidth = R * 0.016f
+                line(cv, cx, cy, a, dialR * 0.9f, dialR * 0.96f)
+                if (hr == 3 || hr == 5 || hr == 6 || hr == 7 || hr == 9) continue
+                when (numerals) {
+                    "arabic", "roman" -> {
+                        txt.textSize = R * (if (numerals == "roman") 0.12f else 0.15f)
+                        numeral(cv, cx, cy, a, dialR * 0.8f, if (numerals == "roman") ROMAN[hr] else n.toString())
+                    }
+                    else -> baton(cv, cx, cy, a, dialR * 1.08f, R * 0.8f, ink, hr == 0)
+                }
+                continue
+            }
             if (dateAtThree && hr == 3) {
                 // short index only; the date window takes the 3's place
                 p.color = ink; p.strokeWidth = R * 0.02f
@@ -392,13 +412,20 @@ class AnalogClockView(c: Context) : View(c) {
         // ---- date window at 3 o'clock ----
         if (dateAtThree) {
             val day = java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault()).format(cal.time).uppercase()
-            val label = if (dateMode == "date") cal.get(Calendar.DAY_OF_MONTH).toString() else "$day ${cal.get(Calendar.DAY_OF_MONTH)}"
+            val mon = java.text.SimpleDateFormat("MMM", java.util.Locale.getDefault()).format(cal.time).uppercase()
+            val d = cal.get(Calendar.DAY_OF_MONTH)
+            val label = when (dateMode) {
+                "date" -> d.toString()
+                "monthdate" -> "$mon $d"
+                "full" -> "$day $mon $d"
+                else -> "$day $d"
+            }
             txt.typeface = face
             txt.textSize = R * 0.085f
             val tw = txt.measureText(label)
             val bh = R * 0.13f
             val bw = tw + R * 0.07f
-            val bx = cx + dialR * 0.66f
+            val bx = minOf(cx + dialR * 0.66f, cx + dialR * 0.9f - bw / 2f)
             rect.set(bx - bw / 2f, cy - bh / 2f, bx + bw / 2f, cy + bh / 2f)
             p.style = Paint.Style.FILL
             p.color = if (night) 0xFF140A08.toInt() else if (isDark(dialCol)) 0xFFF4F2EC.toInt() else 0xFF15161A.toInt()
@@ -412,6 +439,8 @@ class AnalogClockView(c: Context) : View(c) {
             cv.drawText(label, bx, cy - (txt.descent() + txt.ascent()) / 2f, txt)
             txt.color = old
         }
+
+        if (calendar) drawCalendar(cv, cx, cy, dialR, R, cal, dialCol, ink, sub, accent)
 
         // ---- hands ----
         val sec = cal.get(Calendar.SECOND) + cal.get(Calendar.MILLISECOND) / 1000.0
@@ -507,5 +536,135 @@ class AnalogClockView(c: Context) : View(c) {
     private fun mix(a: Int, b: Int, f: Float): Int {
         fun ch(sh: Int) = ((((a shr sh) and 0xFF) * (1 - f) + ((b shr sh) and 0xFF) * f).toInt() and 0xFF) shl sh
         return (0xFF shl 24) or ch(16) or ch(8) or ch(0)
+    }
+
+    // ---------------- calendar layout ----------------
+
+    private val DAYS = listOf("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+    private val MONTHS = listOf("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+    private val oval = RectF()
+
+    /** Day dial at 9, month dial at 3, date dial with moon phase at 6. */
+    private fun drawCalendar(cv: Canvas, cx: Float, cy: Float, dialR: Float, R: Float, cal: Calendar,
+                             dialCol: Int, ink: Int, sub: Int, accent: Int) {
+        val d = dialR * 0.43f
+        val sr = dialR * 0.27f
+        val hourFrac = (cal.get(Calendar.HOUR_OF_DAY) + cal.get(Calendar.MINUTE) / 60.0) / 24.0
+        val handCol = if (night) ink else accent
+
+        // ---- day of week (9 o'clock) with 24-hour scale inside ----
+        var sx = cx - d
+        subBase(cv, sx, cy, sr, dialCol, sub)
+        ticks(cv, sx, cy, sr, 7, sub)
+        ringText(cv, sx, cy, sr * 0.72f, DAYS, sr * 0.17f, ink)
+        ringText(cv, sx, cy, sr * 0.36f, listOf("24", "6", "12", "18"), sr * 0.14f, sub)
+        val dow = cal.get(Calendar.DAY_OF_WEEK) - 1
+        handPath(cv, sx, cy, (dow + hourFrac) / 7.0 * 360.0, sr * 0.82f, sr * 0.09f, sr * 0.03f, handCol)
+        handPath(cv, sx, cy, hourFrac * 360.0, sr * 0.42f, sr * 0.08f, sr * 0.03f, ink)
+        pin(cv, sx, cy, sr, handCol)
+
+        // ---- month (3 o'clock) with leap-year scale inside ----
+        sx = cx + d
+        subBase(cv, sx, cy, sr, dialCol, sub)
+        ticks(cv, sx, cy, sr, 12, sub)
+        ringText(cv, sx, cy, sr * 0.74f, MONTHS, sr * 0.14f, ink)
+        ringText(cv, sx, cy, sr * 0.36f, listOf("4", "1", "2", "3"), sr * 0.14f, sub)
+        val dom = cal.get(Calendar.DAY_OF_MONTH)
+        val dim = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val monthFrac = (dom - 1 + hourFrac) / dim
+        handPath(cv, sx, cy, (cal.get(Calendar.MONTH) + monthFrac) / 12.0 * 360.0, sr * 0.82f, sr * 0.09f, sr * 0.03f, handCol)
+        val leap = cal.get(Calendar.YEAR) % 4   // 0 = leap year, shown at "4"
+        handPath(cv, sx, cy, (leap + (cal.get(Calendar.MONTH) + monthFrac) / 12.0) / 4.0 * 360.0, sr * 0.42f, sr * 0.08f, sr * 0.03f, ink)
+        pin(cv, sx, cy, sr, handCol)
+
+        // ---- date (6 o'clock) around a moon-phase window ----
+        val sy = cy + d
+        subBase(cv, cx, sy, sr, dialCol, sub)
+        ticks(cv, cx, sy, sr, 31, sub)
+        val dateLabels = (1..31).map { if (it % 2 == 1) it.toString() else "" }
+        ringText(cv, cx, sy, sr * 0.78f, dateLabels, sr * 0.13f, ink)
+        moonWindow(cv, cx, sy - sr * 0.12f, sr * 0.5f, ink)
+        handPath(cv, cx, sy, (dom - 1 + hourFrac) / 31.0 * 360.0, sr * 0.86f, sr * 0.08f, sr * 0.025f, handCol)
+        pin(cv, cx, sy, sr, handCol)
+    }
+
+    private fun subBase(cv: Canvas, sx: Float, sy: Float, sr: Float, dialCol: Int, sub: Int) {
+        p.style = Paint.Style.FILL
+        p.color = if (isDark(dialCol)) darken(dialCol, 0.22f) else darken(dialCol, 0.07f)
+        cv.drawCircle(sx, sy, sr, p)
+        p.style = Paint.Style.STROKE
+        p.color = sub
+        p.strokeWidth = sr * 0.02f
+        cv.drawCircle(sx, sy, sr, p)
+    }
+
+    private fun ticks(cv: Canvas, sx: Float, sy: Float, sr: Float, n: Int, sub: Int) {
+        p.style = Paint.Style.STROKE
+        p.color = sub
+        p.strokeWidth = sr * 0.015f
+        for (i in 0 until n) line(cv, sx, sy, Math.toRadians(i * 360.0 / n), sr * 0.9f, sr * 0.98f)
+    }
+
+    private fun ringText(cv: Canvas, sx: Float, sy: Float, r: Float, labels: List<String>, size: Float, color: Int) {
+        val old = txt.color
+        txt.textSize = size
+        txt.color = color
+        for ((i, l) in labels.withIndex()) {
+            if (l.isEmpty()) continue
+            numeral(cv, sx, sy, Math.toRadians(i * 360.0 / labels.size), r, l)
+        }
+        txt.color = old
+    }
+
+    private fun pin(cv: Canvas, sx: Float, sy: Float, sr: Float, color: Int) {
+        p.style = Paint.Style.FILL
+        p.color = color
+        cv.drawCircle(sx, sy, sr * 0.07f, p)
+    }
+
+    /** A dome-shaped window with a starry sky and tonight's real moon phase. */
+    private fun moonWindow(cv: Canvas, mx: Float, my: Float, half: Float, ink: Int) {
+        val sky = if (night) 0xFF0C0605.toInt() else 0xFF14244E.toInt()
+        val gold = if (night) nightBright else 0xFFE9C46A.toInt()
+        // window: upper half-disc with a flat bottom
+        oval.set(mx - half, my - half, mx + half, my + half)
+        path.reset()
+        path.arcTo(oval, 180f, 180f, true)
+        path.close()
+        p.style = Paint.Style.FILL
+        p.color = sky
+        cv.drawPath(path, p)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = half * 0.04f
+        p.color = ink
+        cv.drawPath(path, p)
+        // stars
+        p.style = Paint.Style.FILL
+        p.color = gold
+        val stars = floatArrayOf(-0.7f, -0.2f, -0.45f, -0.6f, 0.5f, -0.55f, 0.75f, -0.18f, -0.15f, -0.85f, 0.25f, -0.85f)
+        for (i in stars.indices step 2) cv.drawCircle(mx + stars[i] * half, my + stars[i + 1] * half, half * 0.035f, p)
+
+        // moon phase: 0 = new, 0.5 = full
+        val synodic = 29.530588853
+        val days = (System.currentTimeMillis() - 947182440000L) / 86_400_000.0
+        val phase = ((days % synodic) + synodic) % synodic / synodic
+        val r = half * 0.42f
+        val ccx = mx
+        val ccy = my - half * 0.45f
+        val dark = if (night) 0xFF1A0E0B.toInt() else 0xFF2A3A66.toInt()
+        p.color = dark
+        cv.drawCircle(ccx, ccy, r, p)
+        val lit = (1 - cos(2 * Math.PI * phase)) / 2
+        cv.save()
+        oval.set(ccx - r, ccy - r, ccx + r, ccy + r)
+        path.reset()
+        path.addOval(oval, android.graphics.Path.Direction.CW)
+        cv.clipPath(path)
+        p.color = gold
+        if (phase < 0.5) cv.drawRect(ccx, ccy - r, ccx + r, ccy + r, p) else cv.drawRect(ccx - r, ccy - r, ccx, ccy + r, p)
+        val ew = (r * kotlin.math.abs(cos(2 * Math.PI * phase))).toFloat()
+        p.color = if (lit > 0.5) gold else dark
+        cv.drawOval(ccx - ew, ccy - r, ccx + ew, ccy + r, p)
+        cv.restore()
     }
 }
