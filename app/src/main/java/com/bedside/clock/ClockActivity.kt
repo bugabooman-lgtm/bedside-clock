@@ -13,6 +13,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
@@ -49,6 +51,8 @@ class ClockActivity : Activity() {
     private var isNight = false
     private var weatherAt = 0L
     private var weatherText = ""
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
 
     private val hideBar = Runnable {
         bar.animate().alpha(0f).setDuration(600).withEndAction { bar.visibility = View.INVISIBLE }.start()
@@ -110,6 +114,7 @@ class ClockActivity : Activity() {
             bar.addView(b, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(7); rightMargin = dp(7) })
         }
         barBtn("⏰  Alarms") { startActivity(Intent(this, AlarmsActivity::class.java)) }
+        barBtn("🎤  Voice") { listen() }
         barBtn("☾  Sleep sounds") { sleepDialog() }
         barBtn("◐  Dim") {
             manualDim = !manualDim
@@ -122,6 +127,12 @@ class ClockActivity : Activity() {
         setContentView(root)
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitClock() }
         askPermissions()
+        tts = TextToSpeech(this) { status -> ttsReady = status == TextToSpeech.SUCCESS }
+    }
+
+    override fun onDestroy() {
+        tts?.shutdown()
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -351,5 +362,40 @@ class ClockActivity : Activity() {
                     .show()
             }
         }
+    }
+
+    // ---------------- voice ----------------
+
+    private fun listen() {
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Try: “Set an alarm for 6 AM” · “Wake me at 6:30 on weekdays” · “Play rain sounds”")
+        try {
+            startActivityForResult(i, REQ_VOICE)
+        } catch (_: Exception) {
+            toast("Voice input isn't available. Make sure the Google app is installed and up to date.")
+        }
+    }
+
+    @Deprecated("Uses the platform result callback")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_VOICE || resultCode != RESULT_OK || data == null) return
+        val heard = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS) ?: return
+        var cmd: Voice.Cmd = Voice.Cmd.Unknown
+        for (h in heard) {
+            cmd = Voice.parse(h)
+            if (cmd !is Voice.Cmd.Unknown) break
+        }
+        val reply = Voice.run(this, cmd)
+        toast(reply)
+        if (ttsReady) tts?.speak(reply.replace("—", ","), TextToSpeech.QUEUE_FLUSH, null, "reply")
+        lastMin = -1
+        update(true)
+    }
+
+    companion object {
+        private const val REQ_VOICE = 31
     }
 }
