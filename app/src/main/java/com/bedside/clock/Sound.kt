@@ -14,31 +14,58 @@ import kotlin.math.sin
 object Synth {
     const val SR = 44100
 
-    private fun note(
+    private val PURE = listOf(1.0 to 1.0)
+    private val CHIME = listOf(1.0 to 1.0, 2.01 to 0.2)
+    private val MARIMBA = listOf(1.0 to 1.0, 4.0 to 0.12)
+    private val PLUCK = listOf(1.0 to 1.0, 2.0 to 0.3, 3.0 to 0.1, 4.0 to 0.04)
+    private val COMB = listOf(1.0 to 1.0, 3.0 to 0.3, 5.4 to 0.12)
+    private val BOWL = listOf(1.0 to 1.0, 2.71 to 0.5, 5.12 to 0.25, 8.4 to 0.1)
+    private val PIANO = listOf(1.0 to 1.0, 2.0 to 0.45, 3.0 to 0.22, 4.0 to 0.12, 5.0 to 0.06)
+    private val BELL = listOf(0.5 to 0.6, 1.0 to 1.0, 1.19 to 0.6, 1.5 to 0.4, 2.0 to 0.5, 2.5 to 0.25, 3.0 to 0.2, 4.07 to 0.1)
+    private val XYLO = listOf(1.0 to 1.0, 3.0 to 0.3, 6.2 to 0.1)
+    private val PAD = listOf(1.0 to 1.0, 2.0 to 0.5, 3.0 to 0.33, 4.0 to 0.25, 5.0 to 0.2, 6.0 to 0.16)
+
+    // note names -> Hz
+    private fun n(name: String): Double {
+        val names = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+        val octave = name.last().digitToInt()
+        val semis = names.indexOf(name.dropLast(1))
+        val midi = (octave + 1) * 12 + semis
+        return 440.0 * Math.pow(2.0, (midi - 69) / 12.0)
+    }
+
+    /** Adds one struck/plucked note to the buffer. */
+    private fun hit(
         buf: FloatArray, freq: Double, start: Double, dur: Double, vol: Double,
-        attack: Double = 0.01, square: Boolean = false, overtone: Double = 0.0
+        partials: List<Pair<Double, Double>> = PURE, attack: Double = 0.01,
+        decay: Double = 5.0, square: Boolean = false, fadeOut: Double = 0.01
     ) {
         val s0 = (start * SR).toInt()
-        val n = (dur * SR).toInt()
-        for (i in 0 until n) {
+        val len = (dur * SR).toInt()
+        val fadeN = max(1, (fadeOut * SR).toInt())
+        for (i in 0 until len) {
             val idx = s0 + i
             if (idx >= buf.size) break
             val t = i.toDouble() / SR
-            val env = if (t < attack) t / attack else exp(-(t - attack) * 5.0 / dur)
-            var v = sin(2 * PI * freq * t)
-            if (square) v = sign(v) * 0.6
-            if (overtone > 0) v += overtone * sin(2 * PI * freq * 2.01 * t)
+            var env = if (t < attack) t / attack else exp(-(t - attack) * decay / dur)
+            val left = len - i
+            if (left < fadeN) env *= left.toDouble() / fadeN
+            var v = 0.0
+            for ((ratio, amp) in partials) {
+                val s = sin(2 * PI * freq * ratio * t)
+                v += amp * (if (square) sign(s) * 0.5 else s)
+            }
             buf[idx] += (v * env * vol).toFloat()
         }
     }
 
     private fun chirp(buf: FloatArray, start: Double, base: Double, rnd: Random) {
         val dur = 0.16
-        val n = (dur * SR).toInt()
+        val len = (dur * SR).toInt()
         val s0 = (start * SR).toInt()
         val peak = base * (1.3 + rnd.nextDouble() * 0.5)
         var phase = 0.0
-        for (i in 0 until n) {
+        for (i in 0 until len) {
             val idx = s0 + i
             if (idx >= buf.size) break
             val t = i.toDouble() / SR
@@ -49,22 +76,35 @@ object Synth {
         }
     }
 
+    private fun seconds(s: Double) = FloatArray((s * SR).toInt())
+
     /** One loop of the named tone, as 16-bit mono PCM. */
     fun pattern(name: String): ShortArray {
         val buf: FloatArray
         when (name) {
             "marimba" -> {
-                buf = FloatArray((2.9 * SR).toInt())
-                listOf(523.25, 659.25, 783.99, 659.25, 880.0, 783.99, 659.25, 523.25).forEachIndexed { i, f ->
-                    note(buf, f, i * 0.22, 0.7, 0.35, 0.004, overtone = 0.12)
+                buf = seconds(2.9)
+                listOf("C5", "E5", "G5", "E5", "A5", "G5", "E5", "C5").forEachIndexed { i, f ->
+                    hit(buf, n(f), i * 0.22, 0.7, 0.35, MARIMBA, attack = 0.004)
                 }
             }
             "classic" -> {
-                buf = FloatArray((1.3 * SR).toInt())
-                for (i in 0 until 4) note(buf, 880.0, i * 0.18, 0.12, 0.25, 0.003, square = true)
+                buf = seconds(1.3)
+                for (i in 0 until 4) hit(buf, 880.0, i * 0.18, 0.12, 0.3, attack = 0.003, decay = 1.0, square = true)
+            }
+            "digital" -> {
+                buf = seconds(1.7)
+                for (g in 0 until 2) for (i in 0 until 4) {
+                    hit(buf, 2048.0, g * 0.8 + i * 0.12, 0.07, 0.3, attack = 0.002, decay = 0.5, square = true)
+                }
+            }
+            "retro" -> {
+                buf = seconds(2.6)
+                listOf("C5", "E5", "G5", "C6", "G5", "E5", "D5", "F5", "A5", "D6", "A5", "F5", "G5", "B5", "D6", "G6")
+                    .forEachIndexed { i, f -> hit(buf, n(f), i * 0.13, 0.12, 0.22, attack = 0.002, decay = 1.0, square = true) }
             }
             "birds" -> {
-                buf = FloatArray((3.2 * SR).toInt())
+                buf = seconds(3.2)
                 val rnd = Random(7)
                 var t = 0.1
                 repeat(2) {
@@ -75,16 +115,79 @@ object Synth {
                     t += 0.5 + rnd.nextDouble() * 0.4
                 }
             }
+            "harp" -> {
+                buf = seconds(5.0)
+                val up = listOf("C4", "E4", "G4", "C5", "E5", "G5", "C6")
+                val up2 = listOf("F3", "A3", "C4", "F4", "A4", "C5", "F5")
+                up.forEachIndexed { i, f -> hit(buf, n(f), i * 0.09, 1.8, 0.25, PLUCK, attack = 0.003, decay = 4.0) }
+                up2.forEachIndexed { i, f -> hit(buf, n(f), 2.3 + i * 0.09, 1.8, 0.25, PLUCK, attack = 0.003, decay = 4.0) }
+            }
+            "musicbox" -> {
+                buf = seconds(5.4)
+                listOf("E6", "C6", "G5", "C6", "D6", "E6", "D6", "C6", "G5", "A5", "B5", "D6", "C6")
+                    .forEachIndexed { i, f -> hit(buf, n(f), i * 0.3, 1.4, 0.28, COMB, attack = 0.003, decay = 4.0) }
+            }
+            "xylophone" -> {
+                buf = seconds(3.0)
+                listOf("G5", "C6", "E6", "G6", "E6", "C6", "D6", "F6", "A6", "F6", "D6", "G6")
+                    .forEachIndexed { i, f -> hit(buf, n(f), i * 0.18, 0.5, 0.3, XYLO, attack = 0.002, decay = 8.0) }
+            }
+            "piano" -> {
+                buf = seconds(5.6)
+                listOf("C4", "G4", "E5", "G4", "C5", "G4", "E5", "G4", "A3", "E4", "C5", "E4", "A4", "E4", "C5", "E4")
+                    .forEachIndexed { i, f -> hit(buf, n(f), i * 0.25, 1.8, 0.25, PIANO, attack = 0.005, decay = 4.0) }
+            }
+            "bowl" -> {
+                buf = seconds(8.0)
+                hit(buf, 220.0, 0.0, 4.2, 0.35, BOWL, attack = 0.02, decay = 2.5, fadeOut = 0.4)
+                hit(buf, 293.66, 3.8, 4.2, 0.35, BOWL, attack = 0.02, decay = 2.5, fadeOut = 0.4)
+            }
+            "church" -> {
+                buf = seconds(5.2)
+                listOf("E4", "C4", "D4", "G3").forEachIndexed { i, f ->
+                    hit(buf, n(f), i * 0.95, 2.5, 0.3, BELL, attack = 0.004, decay = 3.0, fadeOut = 0.2)
+                }
+            }
+            "sunrise" -> {
+                buf = seconds(9.6)
+                val chords = listOf(
+                    listOf("C3", "E3", "G3", "C4"), listOf("A2", "E3", "A3", "C4"),
+                    listOf("F2", "F3", "A3", "C4"), listOf("G2", "G3", "B3", "D4")
+                )
+                chords.forEachIndexed { c, notes ->
+                    for (f in notes) {
+                        for (detune in listOf(0.997, 1.003)) {
+                            hit(buf, n(f) * detune, c * 2.4, 2.6, 0.05, PAD, attack = 0.9, decay = 0.4, fadeOut = 0.6)
+                        }
+                    }
+                }
+            }
+            "waves" -> {
+                buf = seconds(12.0)
+                val rnd = Random(3)
+                var lp = 0.0
+                var brown = 0.0
+                for (i in buf.indices) {
+                    val w = rnd.nextDouble() * 2 - 1
+                    brown = (brown + 0.02 * w) / 1.02
+                    lp += 0.08 * (brown * 4 - lp)
+                    val swell = sin(PI * i / (buf.size / 2.0)).let { it * it }   // two waves per loop
+                    buf[i] = (lp * (0.15 + swell) * 0.9).toFloat()
+                }
+                hit(buf, n("E5"), 2.6, 2.5, 0.12, CHIME, decay = 4.0)
+                hit(buf, n("B5"), 8.6, 2.5, 0.12, CHIME, decay = 4.0)
+            }
             else -> { // chimes
-                buf = FloatArray((3.6 * SR).toInt())
+                buf = seconds(3.6)
                 listOf(1046.5, 1318.5, 1568.0, 2093.0, 1568.0, 1318.5).forEachIndexed { i, f ->
-                    note(buf, f, i * 0.32, 2.2, 0.22, overtone = 0.2)
+                    hit(buf, f, i * 0.32, 2.2, 0.22, CHIME)
                 }
             }
         }
+        // make every tone equally loud
         var peak = 0f
         for (v in buf) peak = max(peak, kotlin.math.abs(v))
-        val scale = if (peak > 0.95f) 0.95f / peak else 1f
+        val scale = if (peak > 0f) 0.9f / peak else 1f
         return ShortArray(buf.size) { (buf[it] * scale * 32000f).toInt().toShort() }
     }
 

@@ -6,13 +6,30 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 
+/** Built-in sounds (made in code), then sounds that come from the tablet. */
 val TONES = listOf(
     "chimes" to "Chimes",
     "birds" to "Birdsong",
+    "sunrise" to "Sunrise pad (very gentle)",
+    "bowl" to "Singing bowl",
+    "waves" to "Ocean waves",
+    "harp" to "Harp",
+    "musicbox" to "Music box",
+    "piano" to "Piano",
     "marimba" to "Marimba",
-    "classic" to "Classic",
-    "system" to "Phone alarm"
+    "xylophone" to "Xylophone",
+    "church" to "Church bells",
+    "retro" to "Retro game",
+    "classic" to "Classic beep",
+    "digital" to "Digital watch (loud)",
+    "system" to "Tablet's default alarm",
+    "device" to "Choose a tablet ringtone…",
+    "file" to "Choose my own music file…"
 )
+
+fun toneName(a: Alarm): String =
+    if ((a.tone == "device" || a.tone == "file") && a.toneName.isNotEmpty()) a.toneName
+    else TONES.firstOrNull { it.first == a.tone }?.second ?: "Chimes"
 
 /** days uses Calendar.SUNDAY(1)..Calendar.SATURDAY(7); empty = rings once. */
 data class Alarm(
@@ -24,13 +41,16 @@ data class Alarm(
     var tone: String,
     var rampMin: Int,
     var sunriseMin: Int,
-    var enabled: Boolean
+    var enabled: Boolean,
+    var toneUri: String = "",
+    var toneName: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("hour", hour); put("minute", minute)
         put("days", JSONArray(days.toList()))
         put("label", label); put("tone", tone)
         put("ramp", rampMin); put("sunrise", sunriseMin); put("enabled", enabled)
+        put("toneUri", toneUri); put("toneName", toneName)
     }
 
     /** Next time (ms) this alarm should ring strictly after [from], or null. */
@@ -60,7 +80,8 @@ data class Alarm(
             return Alarm(
                 o.getLong("id"), o.getInt("hour"), o.getInt("minute"), set,
                 o.optString("label", ""), o.optString("tone", "chimes"),
-                o.optInt("ramp", 3), o.optInt("sunrise", 20), o.optBoolean("enabled", true)
+                o.optInt("ramp", 3), o.optInt("sunrise", 20), o.optBoolean("enabled", true),
+                o.optString("toneUri", ""), o.optString("toneName", "")
             )
         }
 

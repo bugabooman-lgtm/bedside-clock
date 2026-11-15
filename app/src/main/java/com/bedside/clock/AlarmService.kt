@@ -14,6 +14,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -100,7 +101,7 @@ class AlarmService : Service() {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "bedside:ring").apply { acquire(15 * 60_000L) }
         }
         stopSound()
-        startSound(alarm.tone, if (snoozed) 0 else alarm.rampMin)
+        startSound(alarm, if (snoozed) 0 else alarm.rampMin)
         handler.removeCallbacks(autoSnooze)
         handler.postDelayed(autoSnooze, 10 * 60_000L)   // nobody answered: snooze automatically
 
@@ -146,7 +147,8 @@ class AlarmService : Service() {
         }
     }
 
-    private fun startSound(tone: String, rampMin: Int) {
+    private fun startSound(alarm: Alarm, rampMin: Int) {
+        val tone = alarm.tone
         val am = getSystemService(AudioManager::class.java)
         try {
             if (savedVolume < 0) savedVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
@@ -158,7 +160,9 @@ class AlarmService : Service() {
         rampStart = System.currentTimeMillis()
         val startVol = if (rampMs > 0) 0.08f else 1f
         var ok = false
-        if (tone != "system") {
+        if ((tone == "device" || tone == "file") && alarm.toneUri.isNotEmpty()) {
+            ok = playUri(Uri.parse(alarm.toneUri), startVol)
+        } else if (tone != "system") {
             try {
                 val t = Synth.loopingTrack(tone, AudioAttributes.USAGE_ALARM)
                 t.setVolume(startVol)
@@ -167,13 +171,14 @@ class AlarmService : Service() {
                 ok = true
             } catch (_: Exception) {}
         }
-        if (!ok) playSystem(startVol)
+        if (!ok) playUri(null, startVol)
         if (rampMs > 0) handler.post(ramp)
     }
 
-    private fun playSystem(vol: Float) {
+    /** Plays a sound file from the tablet; null = the tablet's default alarm. */
+    private fun playUri(chosen: Uri?, vol: Float): Boolean {
         try {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val uri = chosen ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             val attrs = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
@@ -187,7 +192,12 @@ class AlarmService : Service() {
             mp.prepare()
             mp.start()
             player = mp
-        } catch (_: Exception) {}
+            return true
+        } catch (_: Exception) {
+            player?.release()
+            player = null
+            return false
+        }
     }
 
     private fun stopSound() {
