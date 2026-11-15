@@ -24,7 +24,8 @@ object Styles {
         "analog" to "Analog",
         "surrealMelt" to "Surreal — melting",
         "surrealDrip" to "Surreal — dripping",
-        "surrealSpiral" to "Surreal — spiral"
+        "surrealSpiral" to "Surreal — spiral",
+        "surrealSlime" to "Surreal — slime"
     )
     fun current(c: Context) = Store.getStr(c, "clockStyle", "digital")
     fun name(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "Digital"

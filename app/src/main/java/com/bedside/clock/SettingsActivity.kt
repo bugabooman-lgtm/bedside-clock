@@ -143,6 +143,7 @@ class SettingsActivity : Activity() {
         fun refreshSurreal() {
             srPreview.scheme = Store.getStr(this, "srScheme", "classic")
             srPreview.showSeconds = Store.getBool(this, "srSeconds", false)
+            srPreview.slimeKey = Store.getStr(this, "slimeColor", "pink")
             srPreview.invalidate()
         }
         refreshSurreal()
@@ -154,11 +155,14 @@ class SettingsActivity : Activity() {
         box = srOpts
         section("Surreal faces")
         add(settingRow("Shape", "Preview only — choose the clock style below",
-            choice(listOf("melt" to "Melting", "drip" to "Dripping", "spiral" to "Spiral"), "melt") {
+            choice(listOf("melt" to "Melting", "drip" to "Dripping", "spiral" to "Spiral", "slime" to "Slime"), "melt") {
                 srPreview.mode = it; srPreview.invalidate()
             }))
         add(settingRow("Colors", null, choice(SurrealOpts.SCHEMES, Store.getStr(this, "srScheme", "classic")) {
             Store.put(this, "srScheme", it); refreshSurreal()
+        }))
+        add(settingRow("Slime color", "For the Slime face", choice(SurrealOpts.SLIMES, Store.getStr(this, "slimeColor", "pink")) {
+            Store.put(this, "slimeColor", it); refreshSurreal()
         }))
         val srSec = Switch(this)
         srSec.isChecked = Store.getBool(this, "srSeconds", false)
@@ -167,7 +171,7 @@ class SettingsActivity : Activity() {
         val srButtons = LinearLayout(this)
         srButtons.orientation = LinearLayout.HORIZONTAL
         srButtons.setPadding(0, dp(12), 0, dp(12))
-        for ((key, label) in listOf("surrealMelt" to "Use Melting", "surrealDrip" to "Use Dripping", "surrealSpiral" to "Use Spiral")) {
+        for ((key, label) in listOf("surrealMelt" to "Use Melting", "surrealDrip" to "Use Dripping", "surrealSpiral" to "Use Spiral", "surrealSlime" to "Use Slime")) {
             srButtons.addView(button(label) {
                 Store.put(this, "clockStyle", key)
                 toast("Clock style: " + Styles.name(key))

@@ -323,7 +323,7 @@ class ClockActivity : Activity() {
                 if (dlp.height != dateH) { dlp.height = dateH; dateFlip.layoutParams = dlp }
                 return
             }
-            "surrealMelt", "surrealDrip", "surrealSpiral" -> {
+            "surrealMelt", "surrealDrip", "surrealSpiral", "surrealSlime" -> {
                 val want = minOf(roomForFace(h), w * 0.62f).toInt()
                 val lp = surrealView.layoutParams
                 if (lp.height != want) { lp.width = want; lp.height = want; surrealView.layoutParams = lp }
@@ -388,7 +388,8 @@ class ClockActivity : Activity() {
         dateView.visibility = if (style.startsWith("flip")) View.GONE else View.VISIBLE
         analogView.visibility = if (style == "analog") View.VISIBLE else View.GONE
         surrealView.visibility = if (style.startsWith("surreal")) View.VISIBLE else View.GONE
-        surrealView.mode = when (style) { "surrealDrip" -> "drip"; "surrealSpiral" -> "spiral"; else -> "melt" }
+        surrealView.mode = when (style) { "surrealDrip" -> "drip"; "surrealSpiral" -> "spiral"; "surrealSlime" -> "slime"; else -> "melt" }
+        surrealView.slimeKey = Store.getStr(this, "slimeColor", "pink")
         surrealView.scheme = Store.getStr(this, "srScheme", "classic")
         surrealView.showSeconds = Store.getBool(this, "srSeconds", false)
         analogView.showSeconds = Store.getBool(this, "analogSeconds", true)

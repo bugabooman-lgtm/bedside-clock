@@ -3,6 +3,12 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.9" to listOf(
+            "Dripping face redone like a melting clock: the bottom runs straight down into a curtain of drips, with the rim outlining every drip",
+            "New Slime face: a warped gold-framed clock with a glossy pale-blue face and Roman numerals, coated in glossy slime that drips off — 6 slime colors",
+            "Spiral face redone as an endless spiral: the dial winds inward forever over a twinkling starry sky, with Roman numerals and a silver edge",
+            "All surreal faces fit their space so sunrise and sunset stay on screen"
+        ),
         "1.8.2" to listOf(
             "Surreal faces now fit their space, so sunrise and sunset are never pushed off the screen",
             "Dripping face: real-looking paint drips with rounded drops and a shine, plus a drop that falls every few seconds",
