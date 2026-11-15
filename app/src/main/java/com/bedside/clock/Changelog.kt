@@ -3,6 +3,11 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.5.1" to listOf(
+            "Flip clock: with the leading 0 switched off, the first card stays as a blank card",
+            "Digital clock: with the leading 0 switched off, the whole time stays centred on the screen",
+            "Flip styles show the date on small flip cards too (they flip at midnight)"
+        ),
         "1.5" to listOf(
             "Clock styles: Digital, Flip clock with black cards, Flip clock with white cards, and Analog",
             "Flip clock cards fold over with a 3D flip animation when the time changes",

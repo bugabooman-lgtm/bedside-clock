@@ -28,58 +28,144 @@ object Styles {
 }
 
 /**
- * A split-flap clock: four cards (HH MM). When a digit changes, the top half of the old
- * digit folds down, then the bottom half of the new digit falls into place.
+ * Draws flip cards. A card shows [cur]; while animating (p in 0..1) the top half of [prev]
+ * folds down, then the bottom half of [cur] falls into place. A space draws a blank card.
  */
-class FlipClockView(c: Context) : View(c) {
-    var cardColor = 0xFF1C1C1E.toInt()
+class FlipPainter {
+    var cardColor = 0xFF1E1E21.toInt()
     var digitColor = 0xFFF2F2F2.toInt()
-    var pageColor = 0xFF000000.toInt()
+    var textScale = 0.86f
 
-    private val digits = CharArray(4) { ' ' }
-    private val prev = CharArray(4) { ' ' }
-    private val startAt = LongArray(4)
-    private var ampm = ""
-    var hasTime = false
-        private set
-
-    private val duration = 700L
     private val accel = AccelerateInterpolator(1.4f)
     private val decel = DecelerateInterpolator(1.6f)
-
     private val card = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shade = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
+    private val camera = Camera()
+    private val matrix = Matrix()
+
+    /** Draws one card. [p] >= 1 means at rest. */
+    fun drawCard(cv: Canvas, r: RectF, prev: Char, cur: Char, p: Float) {
+        text.textSize = r.height() * textScale
+        camera.setLocation(0f, 0f, -(r.height() / 72f) * 3.5f)
+        if (p >= 1f) {
+            drawHalf(cv, r, cur, true)
+            drawHalf(cv, r, cur, false)
+            return
+        }
+        drawHalf(cv, r, cur, true)      // new top, revealed behind the falling flap
+        drawHalf(cv, r, prev, false)    // old bottom, until the new one covers it
+        if (p < 0.5f) drawFlap(cv, r, prev, true, 90f * accel.getInterpolation(p / 0.5f))
+        else drawFlap(cv, r, cur, false, 90f * (1f - decel.getInterpolation((p - 0.5f) / 0.5f)))
+    }
+
+    private fun clipHalf(cv: Canvas, r: RectF, top: Boolean) {
+        val mid = r.centerY()
+        val split = r.height() * 0.008f + 1f
+        if (top) cv.clipRect(r.left, r.top, r.right, mid - split) else cv.clipRect(r.left, mid + split, r.right, r.bottom)
+    }
+
+    private fun drawHalf(cv: Canvas, r: RectF, ch: Char, top: Boolean) {
+        cv.save()
+        clipHalf(cv, r, top)
+        card.color = cardColor
+        val rad = r.width() * 0.09f
+        cv.drawRoundRect(r, rad, rad, card)
+        if (!top) {
+            shade.color = 0x14000000
+            cv.drawRoundRect(r, rad, rad, shade)
+        }
+        if (ch != ' ') {
+            text.color = digitColor
+            val baseline = r.centerY() - (text.descent() + text.ascent()) / 2f
+            cv.drawText(ch.toString(), r.centerX(), baseline, text)
+        }
+        cv.restore()
+    }
+
+    private fun drawFlap(cv: Canvas, r: RectF, ch: Char, top: Boolean, angle: Float) {
+        if (angle >= 89.5f) return
+        val cx = r.centerX()
+        val cy = r.centerY()
+        camera.save()
+        camera.rotateX(if (top) -angle else angle)
+        camera.getMatrix(matrix)
+        camera.restore()
+        matrix.preTranslate(-cx, -cy)
+        matrix.postTranslate(cx, cy)
+        cv.save()
+        cv.concat(matrix)
+        drawHalf(cv, r, ch, top)
+        clipHalf(cv, r, top)
+        shade.color = ((angle / 90f * 150f).toInt().coerceIn(0, 150) shl 24)
+        val rad = r.width() * 0.09f
+        cv.drawRoundRect(r, rad, rad, shade)
+        cv.restore()
+    }
+}
+
+/** Keeps track of which characters changed and when each card's flip starts. */
+class FlipState(size: Int) {
+    var cur = CharArray(size) { ' ' }
+    var prev = CharArray(size) { ' ' }
+    var startAt = LongArray(size)
+    var hasText = false
+        private set
+    private val duration = 700L
+
+    /** Returns true if anything changed. Cards flip right-to-left, a moment apart. */
+    fun set(text: String, staggerMs: Long = 120L): Boolean {
+        val n = text.length
+        if (n != cur.size) {   // layout changed (e.g. a longer month name): show straight away
+            cur = text.toCharArray(); prev = text.toCharArray(); startAt = LongArray(n)
+            hasText = true
+            return true
+        }
+        val now = System.currentTimeMillis()
+        var changed = false
+        var delay = 0L
+        for (i in n - 1 downTo 0) {
+            if (text[i] != cur[i]) {
+                prev[i] = cur[i]
+                cur[i] = text[i]
+                startAt[i] = if (hasText) now + delay else 0L
+                if (hasText) delay += staggerMs
+                changed = true
+            }
+        }
+        hasText = true
+        return changed
+    }
+
+    /** Progress 0..1 for card [i] at [now]; -1 = still waiting to start. */
+    fun progress(i: Int, now: Long): Float {
+        val s = startAt[i]
+        if (s == 0L) return 1f
+        if (now < s) return -1f
+        val p = ((now - s).toFloat() / duration).coerceIn(0f, 1f)
+        if (p >= 1f) startAt[i] = 0L
+        return p
+    }
+}
+
+/** The HH MM flip clock. A blank first card (space) still shows as an empty card. */
+class FlipClockView(c: Context) : View(c) {
+    val painter = FlipPainter()
+    private val state = FlipState(4)
+    private var ampm = ""
+    private val rect = RectF()
     private val small = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
         textAlign = Paint.Align.LEFT
     }
-    private val camera = Camera()
-    private val matrix = Matrix()
-    private val rect = RectF()
 
-    /** [four] = 4 characters "0630" (a space = blank card); animates the cards that changed. */
+    /** [four] = 4 characters, e.g. "0630" or " 630" (blank first card). */
     fun setTime(four: String, amPm: String) {
-        val now = System.currentTimeMillis()
-        var stagger = 0L
-        for (i in 0 until 4) {
-            val ch = four.getOrElse(i) { ' ' }
-            if (ch != digits[i]) {
-                prev[i] = digits[i]
-                digits[i] = ch
-                // flip from the right-most card backwards, like a real flip clock
-                startAt[i] = if (hasTime) now + stagger else 0L
-            }
-        }
-        // stagger: minutes flip first, then hours a moment later
-        if (hasTime) {
-            for (i in 3 downTo 0) if (startAt[i] > 0) { startAt[i] = now + stagger; stagger += 120L }
-        }
+        state.set(four.padEnd(4, ' ').take(4))
         ampm = amPm
-        hasTime = true
         invalidate()
     }
 
@@ -87,7 +173,6 @@ class FlipClockView(c: Context) : View(c) {
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0 || h <= 0) return
-        // geometry: [card][gap][card]  [groupGap]  [card][gap][card]
         val gapR = 0.05f
         val groupR = 0.32f
         var cw = (w * 0.94f) / (4 + 2 * gapR + groupR)
@@ -99,91 +184,68 @@ class FlipClockView(c: Context) : View(c) {
         val x0 = (w - total) / 2f
         val y0 = (h - ch) / 2f
         val xs = floatArrayOf(x0, x0 + cw + gap, x0 + 2 * cw + gap + group, x0 + 3 * cw + 2 * gap + group)
-        text.textSize = ch * 0.86f
-        camera.setLocation(0f, 0f, -(ch / 72f) * 3.5f)
-
         val now = System.currentTimeMillis()
         var animating = false
         for (i in 0 until 4) {
             rect.set(xs[i], y0, xs[i] + cw, y0 + ch)
-            val s = startAt[i]
-            val p = if (s == 0L) 1f else ((now - s).toFloat() / duration).coerceIn(0f, 1f)
-            if (s != 0L && now < s) {
-                // waiting for its turn: show the old digit
-                drawHalf(cv, rect, prev[i], true)
-                drawHalf(cv, rect, prev[i], false)
-                animating = true
-                continue
-            }
-            if (p >= 1f) {
-                startAt[i] = 0L
-                drawHalf(cv, rect, digits[i], true)
-                drawHalf(cv, rect, digits[i], false)
-            } else {
-                animating = true
-                drawHalf(cv, rect, digits[i], true)     // new top, revealed behind the falling flap
-                drawHalf(cv, rect, prev[i], false)      // old bottom, until the new one covers it
-                if (p < 0.5f) {
-                    drawFlap(cv, rect, prev[i], true, 90f * accel.getInterpolation(p / 0.5f))
-                } else {
-                    drawFlap(cv, rect, digits[i], false, 90f * (1f - decel.getInterpolation((p - 0.5f) / 0.5f)))
-                }
-            }
+            val p = state.progress(i, now)
+            if (p < 0f) { painter.drawCard(cv, rect, state.prev[i], state.prev[i], 1f); animating = true; continue }
+            painter.drawCard(cv, rect, state.prev[i], state.cur[i], p)
+            if (p < 1f) animating = true
         }
-        // AM / PM in the corner of the first visible hour card
         if (ampm.isNotEmpty()) {
-            val i = if (digits[0] == ' ') 1 else 0
             small.textSize = ch * 0.1f
-            small.color = digitColor
+            small.color = painter.digitColor
             small.alpha = 200
-            cv.drawText(ampm, xs[i] + cw * 0.08f, y0 + ch - ch * 0.07f, small)
+            cv.drawText(ampm, xs[0] + cw * 0.08f, y0 + ch - ch * 0.07f, small)
         }
         if (animating) postInvalidateOnAnimation()
     }
+}
 
-    /** One half of a card with its half of the digit. */
-    private fun drawHalf(cv: Canvas, r: RectF, digit: Char, top: Boolean) {
-        if (digit == ' ') return
-        val mid = r.centerY()
-        val split = r.height() * 0.008f + 1f
-        cv.save()
-        if (top) cv.clipRect(r.left, r.top, r.right, mid - split) else cv.clipRect(r.left, mid + split, r.right, r.bottom)
-        card.color = cardColor
-        val rad = r.width() * 0.09f
-        cv.drawRoundRect(r, rad, rad, card)
-        // a hint of depth: lower half a touch darker
-        if (!top) {
-            shade.color = 0x14000000
-            cv.drawRoundRect(r, rad, rad, shade)
-        }
-        text.color = digitColor
-        val baseline = mid - (text.descent() + text.ascent()) / 2f
-        cv.drawText(digit.toString(), r.centerX(), baseline, text)
-        cv.restore()
+/** A row of small flip cards for any text, e.g. the date "SAT NOV 14". Spaces become gaps between words. */
+class FlipRowView(c: Context) : View(c) {
+    val painter = FlipPainter().apply { textScale = 0.72f }
+    private var state = FlipState(0)
+    private val rect = RectF()
+
+    fun setText(t: String) {
+        if (state.set(t.uppercase(), 60L)) invalidate()
     }
 
-    /** The moving flap, tilted [angle] degrees (0 = flat on the card, 90 = edge-on) about the middle hinge. */
-    private fun drawFlap(cv: Canvas, r: RectF, digit: Char, top: Boolean, angle: Float) {
-        if (digit == ' ' || angle >= 89.5f) return
-        val cx = r.centerX()
-        val cy = r.centerY()
-        camera.save()
-        camera.rotateX(if (top) -angle else angle)
-        camera.getMatrix(matrix)
-        camera.restore()
-        matrix.preTranslate(-cx, -cy)
-        matrix.postTranslate(cx, cy)
-        cv.save()
-        cv.concat(matrix)
-        drawHalf(cv, r, digit, top)
-        // darken as it turns away from the light
-        val mid = r.centerY()
-        val split = r.height() * 0.008f + 1f
-        if (top) cv.clipRect(r.left, r.top, r.right, mid - split) else cv.clipRect(r.left, mid + split, r.right, r.bottom)
-        shade.color = ((angle / 90f * 150f).toInt().coerceIn(0, 150) shl 24)
-        val rad = r.width() * 0.09f
-        cv.drawRoundRect(r, rad, rad, shade)
-        cv.restore()
+    override fun onDraw(cv: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val chars = state.cur
+        if (w <= 0 || h <= 0 || chars.isEmpty()) return
+        var ch = h * 0.96f
+        var cw = ch * 0.68f
+        val gapR = 0.07f
+        val spaceR = 0.45f
+        fun widthFor(cardW: Float): Float {
+            var t = 0f
+            for ((i, c) in chars.withIndex()) {
+                t += if (c == ' ') cardW * spaceR else cardW
+                if (i < chars.size - 1 && c != ' ' && chars[i + 1] != ' ') t += cardW * gapR
+            }
+            return t
+        }
+        var total = widthFor(cw)
+        if (total > w * 0.92f) { val k = w * 0.92f / total; cw *= k; ch *= k; total = widthFor(cw) }
+        var x = (w - total) / 2f
+        val y0 = (h - ch) / 2f
+        val now = System.currentTimeMillis()
+        var animating = false
+        for ((i, c) in chars.withIndex()) {
+            if (c == ' ') { x += cw * spaceR; continue }
+            rect.set(x, y0, x + cw, y0 + ch)
+            val p = state.progress(i, now)
+            if (p < 0f) { painter.drawCard(cv, rect, state.prev[i], state.prev[i], 1f); animating = true }
+            else { painter.drawCard(cv, rect, state.prev[i], c, p); if (p < 1f) animating = true }
+            x += cw
+            if (i < chars.size - 1 && chars[i + 1] != ' ') x += cw * gapR
+        }
+        if (animating) postInvalidateOnAnimation()
     }
 }
 

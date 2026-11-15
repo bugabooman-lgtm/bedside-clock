@@ -44,6 +44,7 @@ class ClockActivity : Activity() {
     private lateinit var clockRow: LinearLayout
     private lateinit var flipView: FlipClockView
     private lateinit var analogView: AnalogClockView
+    private lateinit var dateFlip: FlipRowView
     private var style = "digital"
     private lateinit var dateView: TextView
     private lateinit var nextView: TextView
@@ -134,6 +135,8 @@ class ClockActivity : Activity() {
         }
         center.addView(clockBox, LinearLayout.LayoutParams(MATCH, WRAP))
         center.addView(dateView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
+        dateFlip = FlipRowView(this)
+        center.addView(dateFlip, LinearLayout.LayoutParams(MATCH, dp(64)).apply { topMargin = dp(14) })
         center.addView(nextView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(10) })
         center.addView(weatherView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(6) })
         sunView = tv("", 20f, Col.DIM)
@@ -288,12 +291,14 @@ class ClockActivity : Activity() {
             s.setSpan(ForegroundColorSpan(if (isNight) dimColors().second else Col.DIM), mm.length, right.length, 0)
         }
         val zero = Store.getBool(this, "hourZero", true)
+        centreDigital(zero)
         hoursView.text = if (zero) hh.padStart(2, '0') else hh
         minsView.text = s
         flipView.setTime((if (zero) hh.padStart(2, '0') else hh.padStart(2, ' ')) + mm, ampm)
         analogView.invalidate()
         fitClock()
         dateView.text = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now.time)
+        dateFlip.setText(SimpleDateFormat("EEE MMM d", Locale.getDefault()).format(now.time))
         val n = Scheduler.next(this)
         nextView.text = if (n == null) "" else {
             (if (n.snoozed) "⏰  Snoozed until " else "⏰  ") + fmtMillis(this, n.at) + " · " + untilText(n.at)
@@ -310,9 +315,12 @@ class ClockActivity : Activity() {
         val (main, ampm) = fmtTime(this, lastMin.coerceAtLeast(0) / 60, lastMin.coerceAtLeast(0) % 60)
         when (style) {
             "flipDark", "flipLight" -> {
-                val want = (h * 0.58f).toInt()
+                val want = (h * 0.52f).toInt()
                 val lp = flipView.layoutParams
                 if (lp.height != want) { lp.height = want; flipView.layoutParams = lp }
+                val dateH = (h * 0.1f).toInt()
+                val dlp = dateFlip.layoutParams
+                if (dlp.height != dateH) { dlp.height = dateH; dateFlip.layoutParams = dlp }
                 return
             }
             "analog" -> {
@@ -331,19 +339,34 @@ class ClockActivity : Activity() {
         val colon = p.measureText(":")
         if (ampm.isNotEmpty()) { p.textSize = size * 0.18f; right += p.measureText(" $ampm") }
         // both halves are as wide as the wider one, so the colon stays centred
-        val width = 2 * maxOf(left, right) + colon
+        val width = if (Store.getBool(this, "hourZero", true)) 2 * maxOf(left, right) + colon else left + colon + right
         val maxW = w * 0.92f
         if (width > maxW) size *= maxW / width
         for (v in clockParts) v.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
     }
 
     private var isNightRendered = false
+    private var digitalZero: Boolean? = null
+
+    /**
+     * With the leading 0, the colon sits in the middle (both sides are two digits wide).
+     * Without it, the whole time ("6:30 PM") is centred instead.
+     */
+    private fun centreDigital(zero: Boolean) {
+        if (digitalZero == zero) return
+        digitalZero = zero
+        clockRow.gravity = Gravity.CENTER_HORIZONTAL
+        hoursView.layoutParams = if (zero) LinearLayout.LayoutParams(0, WRAP, 1f) else LinearLayout.LayoutParams(WRAP, WRAP)
+        minsView.layoutParams = if (zero) LinearLayout.LayoutParams(0, WRAP, 1f) else LinearLayout.LayoutParams(WRAP, WRAP)
+    }
 
     /** Shows the chosen clock style. */
     private fun applyStyle() {
         style = Styles.current(this)
         clockRow.visibility = if (style == "digital") View.VISIBLE else View.GONE
         flipView.visibility = if (style.startsWith("flip")) View.VISIBLE else View.GONE
+        dateFlip.visibility = flipView.visibility
+        dateView.visibility = if (style.startsWith("flip")) View.GONE else View.VISIBLE
         analogView.visibility = if (style == "analog") View.VISIBLE else View.GONE
         analogView.showSeconds = Store.getBool(this, "analogSeconds", true)
         analogView.showNumbers = Store.getBool(this, "analogNumbers", true)
@@ -357,24 +380,29 @@ class ClockActivity : Activity() {
     private fun faceColors(night: Boolean) {
         val (bright, faint) = dimColors()
         if (night) {
-            flipView.cardColor = 0xFF120A08.toInt()
-            flipView.digitColor = bright
+            for (fp in listOf(flipView.painter, dateFlip.painter)) {
+                fp.cardColor = 0xFF120A08.toInt()
+                fp.digitColor = bright
+            }
             analogView.faceColor = bright
             analogView.dimColor = faint
             analogView.secondColor = faint
         } else {
-            if (style == "flipLight") {
-                flipView.cardColor = 0xFFF2F2F0.toInt()
-                flipView.digitColor = 0xFF141414.toInt()
-            } else {
-                flipView.cardColor = 0xFF1E1E21.toInt()
-                flipView.digitColor = 0xFFF2F2F2.toInt()
+            for (fp in listOf(flipView.painter, dateFlip.painter)) {
+                if (style == "flipLight") {
+                    fp.cardColor = 0xFFF2F2F0.toInt()
+                    fp.digitColor = 0xFF141414.toInt()
+                } else {
+                    fp.cardColor = 0xFF1E1E21.toInt()
+                    fp.digitColor = 0xFFF2F2F2.toInt()
+                }
             }
             analogView.faceColor = Col.CLOCK
             analogView.dimColor = Col.DIM
             analogView.secondColor = Col.ACCENT
         }
         flipView.invalidate()
+        dateFlip.invalidate()
         analogView.invalidate()
     }
     private var lastUpdTick = -1
