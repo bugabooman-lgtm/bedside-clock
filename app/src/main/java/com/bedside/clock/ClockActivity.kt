@@ -1,0 +1,355 @@
+package com.bedside.clock
+
+import android.app.Activity
+import android.app.AlertDialog
+import android.app.NotificationManager
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Paint
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.SeekBar
+import android.widget.TextView
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import kotlin.random.Random
+
+/** The bedside clock face. Stays on screen all night. */
+class ClockActivity : Activity() {
+    private val handler = Handler(Looper.getMainLooper())
+    private lateinit var root: FrameLayout
+    private lateinit var center: LinearLayout
+    private lateinit var clock: TextView
+    private lateinit var dateView: TextView
+    private lateinit var nextView: TextView
+    private lateinit var weatherView: TextView
+    private lateinit var sleepChip: TextView
+    private lateinit var bar: LinearLayout
+    private lateinit var sunrise: View
+
+    private var lastMin = -1
+    private var peekUntil = 0L
+    private var manualDim = false
+    private var isNight = false
+    private var weatherAt = 0L
+    private var weatherText = ""
+
+    private val hideBar = Runnable {
+        bar.animate().alpha(0f).setDuration(600).withEndAction { bar.visibility = View.INVISIBLE }.start()
+    }
+
+    private val tick = object : Runnable {
+        override fun run() {
+            update(false)
+            handler.postDelayed(this, 1000)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        root = FrameLayout(this)
+        root.setBackgroundColor(Col.BG)
+
+        sunrise = View(this)
+        sunrise.background = GradientDrawable(
+            GradientDrawable.Orientation.BOTTOM_TOP,
+            intArrayOf(0xFFFFD9A0.toInt(), 0xFFFF9A5A.toInt(), 0xFFC2547A.toInt(), 0xFF2A1B3D.toInt())
+        )
+        sunrise.alpha = 0f
+        root.addView(sunrise, FrameLayout.LayoutParams(MATCH, MATCH))
+
+        center = LinearLayout(this)
+        center.orientation = LinearLayout.VERTICAL
+        center.gravity = Gravity.CENTER
+        clock = tv("", 200f, Col.CLOCK, light = true)
+        clock.includeFontPadding = false
+        clock.gravity = Gravity.CENTER
+        clock.maxLines = 1
+        dateView = tv("", 30f, Col.DIM, light = true)
+        dateView.gravity = Gravity.CENTER
+        nextView = tv("", 22f, Col.ACCENT)
+        nextView.gravity = Gravity.CENTER
+        weatherView = tv("", 22f, Col.DIM)
+        weatherView.gravity = Gravity.CENTER
+        center.addView(clock)
+        center.addView(dateView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
+        center.addView(nextView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(10) })
+        center.addView(weatherView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(6) })
+        root.addView(center, FrameLayout.LayoutParams(MATCH, MATCH))
+
+        sleepChip = tv("", 16f, 0xFF7CC4FF.toInt())
+        sleepChip.visibility = View.GONE
+        root.addView(sleepChip, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(18); rightMargin = dp(22)
+        })
+
+        bar = LinearLayout(this)
+        bar.orientation = LinearLayout.HORIZONTAL
+        bar.gravity = Gravity.CENTER
+        fun barBtn(label: String, action: () -> Unit) {
+            val b = button(label) { action() }
+            b.background = roundBg(Col.PANEL, dp(30).toFloat(), Col.LINE, dp(1))
+            bar.addView(b, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(7); rightMargin = dp(7) })
+        }
+        barBtn("⏰  Alarms") { startActivity(Intent(this, AlarmsActivity::class.java)) }
+        barBtn("☾  Sleep sounds") { sleepDialog() }
+        barBtn("◐  Dim") {
+            manualDim = !manualDim
+            peekUntil = 0L
+            update(true)
+        }
+        barBtn("⚙  Settings") { startActivity(Intent(this, SettingsActivity::class.java)) }
+        root.addView(bar, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = dp(20) })
+
+        setContentView(root)
+        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitClock() }
+        askPermissions()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        immersive()
+        Scheduler.reschedule(this)
+        lastMin = -1
+        weatherAt = 0L
+        showBar()
+        handler.removeCallbacks(tick)
+        handler.post(tick)
+    }
+
+    override fun onPause() {
+        handler.removeCallbacks(tick)
+        super.onPause()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) immersive()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            showBar()
+            if (isNight) {
+                // tap at night: brighten for 15 seconds
+                peekUntil = System.currentTimeMillis() + 15_000L
+                manualDim = false
+                update(true)
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun showBar() {
+        bar.animate().cancel()
+        bar.visibility = View.VISIBLE
+        bar.alpha = 1f
+        handler.removeCallbacks(hideBar)
+        handler.postDelayed(hideBar, 8000)
+    }
+
+    // ---------------- drawing ----------------
+
+    private fun update(force: Boolean) {
+        val now = Calendar.getInstance()
+        val nowMin = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        if (nowMin != lastMin || force) {
+            lastMin = nowMin
+            renderClock(now)
+            // drift the face a few pixels each minute so nothing sits in one spot all night
+            center.translationX = Random.nextInt(-dp(14), dp(14) + 1).toFloat()
+            center.translationY = Random.nextInt(-dp(10), dp(10) + 1).toFloat()
+        }
+        applyLighting(nowMin)
+        updateSleepChip()
+        maybeRefreshWeather()
+    }
+
+    private fun renderClock(now: Calendar) {
+        val (main, ampm) = fmtTime(this, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE))
+        val full = if (ampm.isEmpty()) main else "$main $ampm"
+        val s = SpannableString(full)
+        if (ampm.isNotEmpty()) {
+            s.setSpan(RelativeSizeSpan(0.18f), main.length, full.length, 0)
+            s.setSpan(ForegroundColorSpan(if (isNight) Col.NIGHT_DIM else Col.DIM), main.length, full.length, 0)
+        }
+        clock.text = s
+        fitClock()
+        dateView.text = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now.time)
+        val n = Scheduler.next(this)
+        nextView.text = if (n == null) "" else {
+            (if (n.snoozed) "⏰  Snoozed until " else "⏰  ") + fmtMillis(this, n.at) + " · " + untilText(n.at)
+        }
+        weatherView.text = weatherText
+    }
+
+    /** Makes the digits as big as the screen allows. */
+    private fun fitClock() {
+        val w = root.width
+        val h = root.height
+        if (w == 0 || h == 0) return
+        val (main, ampm) = fmtTime(this, lastMin.coerceAtLeast(0) / 60, lastMin.coerceAtLeast(0) % 60)
+        val p = Paint(clock.paint)
+        var size = h * 0.52f
+        p.textSize = size
+        var width = p.measureText(main)
+        if (ampm.isNotEmpty()) { p.textSize = size * 0.18f; width += p.measureText(" $ampm") }
+        val maxW = w * 0.9f
+        if (width > maxW) size *= maxW / width
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+    }
+
+    private fun applyLighting(nowMin: Int) {
+        val n = Scheduler.next(this)
+        var sun = 0f
+        if (n != null && !n.snoozed && n.alarm.sunriseMin > 0) {
+            val left = (n.at - System.currentTimeMillis()) / 60_000f
+            if (left >= 0f && left <= n.alarm.sunriseMin) sun = 1f - left / n.alarm.sunriseMin
+        }
+        sunrise.alpha = sun * 0.92f
+
+        val scheduledNight = Store.nightOn(this) && inRange(nowMin, Store.nightFrom(this), Store.nightTo(this))
+        val night = sun == 0f && System.currentTimeMillis() > peekUntil && (scheduledNight || manualDim)
+        if (night != isNight) {
+            isNight = night
+            clock.setTextColor(if (night) Col.NIGHT else Col.CLOCK)
+            dateView.setTextColor(if (night) Col.NIGHT_DIM else Col.DIM)
+            nextView.setTextColor(if (night) Col.NIGHT_DIM else Col.ACCENT)
+            weatherView.setTextColor(if (night) Col.NIGHT_DIM else Col.DIM)
+            lastMin = -1 // re-render AM/PM colour
+        }
+
+        val nightLevel = Store.nightBright(this).coerceAtLeast(0.004f)
+        val brightness = when {
+            sun > 0f -> maxOf(nightLevel, sun)
+            night -> nightLevel
+            else -> WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+        val lp = window.attributes
+        if (lp.screenBrightness != brightness) {
+            lp.screenBrightness = brightness
+            window.attributes = lp
+        }
+    }
+
+    private fun updateSleepChip() {
+        if (!SleepPlayer.isPlaying) {
+            sleepChip.visibility = View.GONE
+            return
+        }
+        sleepChip.visibility = View.VISIBLE
+        val name = SleepPlayer.TYPES.firstOrNull { it.first == SleepPlayer.type }?.second ?: "Sleep sound"
+        val left = SleepPlayer.minutesLeft()
+        sleepChip.text = if (left > 0) "$name · $left min left" else "$name · playing"
+    }
+
+    private fun maybeRefreshWeather() {
+        if (Store.weatherName(this).isEmpty()) {
+            if (weatherText.isNotEmpty()) { weatherText = ""; weatherView.text = "" }
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (now - weatherAt < 30 * 60_000L) return
+        weatherAt = now
+        val lat = Store.getFloat(this, "wLat", 0f).toDouble()
+        val lon = Store.getFloat(this, "wLon", 0f).toDouble()
+        val f = Store.useF(this)
+        Thread {
+            try {
+                val s = Weather.summary(lat, lon, f)
+                runOnUiThread { weatherText = s; weatherView.text = s }
+            } catch (_: Exception) {
+                weatherAt = now - 25 * 60_000L // try again in ~5 minutes
+            }
+        }.start()
+    }
+
+    // ---------------- sleep sounds ----------------
+
+    private fun sleepDialog() {
+        var type = Store.getStr(this, "sleepType", "rain")
+        var timer = Store.getInt(this, "sleepTimer", 30)
+        var vol = Store.getFloat(this, "sleepVol", 0.25f)
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(28), dp(16), dp(28), dp(4))
+        box.addView(tv("Sleep sounds", 26f))
+        box.addView(settingRow("Sound", null, choice(SleepPlayer.TYPES, type) {
+            type = it
+            if (SleepPlayer.isPlaying) SleepPlayer.play(type, vol, timer)
+        }))
+        box.addView(settingRow("Turn off after", null,
+            choice(listOf(15 to "15 min", 30 to "30 min", 60 to "1 hr", 0 to "All night"), timer) {
+                timer = it
+                if (SleepPlayer.isPlaying) SleepPlayer.setTimer(it)
+            }))
+        val seek = SeekBar(this)
+        seek.max = 100
+        seek.progress = (vol * 100).toInt()
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                vol = (p / 100f).coerceAtLeast(0.02f)
+                SleepPlayer.volume = vol
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) {}
+            override fun onStopTrackingTouch(sb: SeekBar) {}
+        })
+        box.addView(settingRow("Volume", null, null))
+        box.addView(seek, LinearLayout.LayoutParams(MATCH, WRAP))
+        AlertDialog.Builder(this)
+            .setView(box)
+            .setPositiveButton("Play") { _, _ ->
+                Store.put(this, "sleepType", type)
+                Store.put(this, "sleepTimer", timer)
+                Store.put(this, "sleepVol", vol)
+                SleepPlayer.play(type, vol, timer)
+                updateSleepChip()
+            }
+            .setNegativeButton("Stop") { _, _ -> SleepPlayer.stop(); updateSleepChip() }
+            .setNeutralButton("Close", null)
+            .show()
+    }
+
+    // ---------------- permissions ----------------
+
+    private fun askPermissions() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1)
+        }
+        if (Build.VERSION.SDK_INT >= 34) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (!nm.canUseFullScreenIntent()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Allow full-screen alarms")
+                    .setMessage("So the wake-up screen can appear even when the tablet is locked, turn on “Bedside Clock” on the next screen.")
+                    .setPositiveButton("Open settings") { _, _ ->
+                        try {
+                            startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName")))
+                        } catch (_: Exception) {}
+                    }
+                    .setNegativeButton("Later", null)
+                    .show()
+            }
+        }
+    }
+}
