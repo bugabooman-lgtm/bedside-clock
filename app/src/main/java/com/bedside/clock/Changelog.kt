@@ -3,6 +3,12 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.6" to listOf(
+            "Analog clock redesigned like a real watch: metal bezel, dial with depth, minute track, tapered hands with shadows",
+            "The date now sits in a window at 3 o'clock on the analog face",
+            "Analog clock is bigger",
+            "New analog options: 7 dial colours, second hand colour, numbers (1 2 3, Roman, 12·3·6·9, markers, dots), 4 fonts, date window style"
+        ),
         "1.5.1" to listOf(
             "Flip clock: with the leading 0 switched off, the first card stays as a blank card",
             "Digital clock: with the leading 0 switched off, the whole time stays centred on the screen",

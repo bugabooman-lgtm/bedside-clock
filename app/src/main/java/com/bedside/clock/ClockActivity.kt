@@ -324,7 +324,7 @@ class ClockActivity : Activity() {
                 return
             }
             "analog" -> {
-                val want = minOf(h * 0.62f, w * 0.55f).toInt()
+                val want = minOf(h * 0.78f, w * 0.62f).toInt()
                 val lp = analogView.layoutParams
                 if (lp.height != want) { lp.width = want; lp.height = want; analogView.layoutParams = lp }
                 return
@@ -369,7 +369,13 @@ class ClockActivity : Activity() {
         dateView.visibility = if (style.startsWith("flip")) View.GONE else View.VISIBLE
         analogView.visibility = if (style == "analog") View.VISIBLE else View.GONE
         analogView.showSeconds = Store.getBool(this, "analogSeconds", true)
-        analogView.showNumbers = Store.getBool(this, "analogNumbers", true)
+        analogView.dialKey = Store.getStr(this, "anDial", "black")
+        analogView.accentKey = Store.getStr(this, "anAccent", "orange")
+        analogView.numerals = Store.getStr(this, "anNumerals", "arabic")
+        analogView.fontKey = Store.getStr(this, "anFont", "modern")
+        analogView.dateMode = Store.getStr(this, "anDate", "daydate")
+        // the date lives inside the analog face (unless its date window is off)
+        if (style == "analog" && analogView.dateMode != "off") dateView.visibility = View.GONE
         faceColors(isNight)
         lastMin = -1
         fitClock()
@@ -384,9 +390,9 @@ class ClockActivity : Activity() {
                 fp.cardColor = 0xFF120A08.toInt()
                 fp.digitColor = bright
             }
-            analogView.faceColor = bright
-            analogView.dimColor = faint
-            analogView.secondColor = faint
+            analogView.night = true
+            analogView.nightBright = bright
+            analogView.nightFaint = faint
         } else {
             for (fp in listOf(flipView.painter, dateFlip.painter)) {
                 if (style == "flipLight") {
@@ -397,9 +403,7 @@ class ClockActivity : Activity() {
                     fp.digitColor = 0xFFF2F2F2.toInt()
                 }
             }
-            analogView.faceColor = Col.CLOCK
-            analogView.dimColor = Col.DIM
-            analogView.secondColor = Col.ACCENT
+            analogView.night = false
         }
         flipView.invalidate()
         dateFlip.invalidate()

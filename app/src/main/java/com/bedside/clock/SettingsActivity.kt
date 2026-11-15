@@ -76,8 +76,18 @@ class SettingsActivity : Activity() {
             add(settingRow(title, sub, sw))
         }
         switchRow("0 before single-digit hours", "Shows 06:30 instead of 6:30 on the clock", "hourZero", true)
-        switchRow("Analog: second hand", null, "analogSeconds", true)
-        switchRow("Analog: numbers", null, "analogNumbers", true)
+
+        // ---- analog face ----
+        section("Analog clock face")
+        fun pick(title: String, key: String, def: String, opts: List<Pair<String, String>>) {
+            add(settingRow(title, null, choice(opts, Store.getStr(this, key, def)) { Store.put(this, key, it) }))
+        }
+        pick("Dial colour", "anDial", "black", AnalogOpts.DIALS.map { it.first to it.second })
+        pick("Second hand colour", "anAccent", "orange", AnalogOpts.ACCENT_NAMES)
+        pick("Numbers", "anNumerals", "arabic", AnalogOpts.NUMERALS)
+        pick("Number font", "anFont", "modern", AnalogOpts.FONTS)
+        pick("Date window", "anDate", "daydate", AnalogOpts.DATES)
+        switchRow("Second hand", "A smooth sweeping second hand", "analogSeconds", true)
 
         // ---- alarms ----
         section("Alarms")
