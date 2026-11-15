@@ -45,6 +45,7 @@ class ClockActivity : Activity() {
     private lateinit var analogView: AnalogClockView
     private lateinit var dateFlip: FlipRowView
     private lateinit var surrealView: SurrealClockView
+    private lateinit var clockBox: FrameLayout
     private var style = "digital"
     private lateinit var dateView: TextView
     private lateinit var nextView: TextView
@@ -121,7 +122,7 @@ class ClockActivity : Activity() {
         flipView = FlipClockView(this)
         analogView = AnalogClockView(this)
         surrealView = SurrealClockView(this)
-        val clockBox = FrameLayout(this)
+        clockBox = FrameLayout(this)
         clockBox.addView(clockRow, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER))
         clockBox.addView(flipView, FrameLayout.LayoutParams(MATCH, dp(300), Gravity.CENTER))
         clockBox.addView(analogView, FrameLayout.LayoutParams(dp(300), dp(300), Gravity.CENTER))
@@ -323,13 +324,13 @@ class ClockActivity : Activity() {
                 return
             }
             "surrealMelt", "surrealDrip", "surrealSpiral" -> {
-                val want = minOf(h * 0.8f, w * 0.62f).toInt()
+                val want = minOf(roomForFace(h), w * 0.62f).toInt()
                 val lp = surrealView.layoutParams
                 if (lp.height != want) { lp.width = want; lp.height = want; surrealView.layoutParams = lp }
                 return
             }
             "analog" -> {
-                val want = minOf(h * 0.78f, w * 0.62f).toInt()
+                val want = minOf(h * 0.78f, roomForFace(h), w * 0.62f).toInt()
                 val lp = analogView.layoutParams
                 if (lp.height != want) { lp.width = want; lp.height = want; analogView.layoutParams = lp }
                 return
@@ -351,6 +352,19 @@ class ClockActivity : Activity() {
     }
 
     private var isNightRendered = false
+
+    /** Height left for a clock face after the date / alarm / weather / sunrise lines below it. */
+    private fun roomForFace(h: Int): Float {
+        var others = 0
+        for (i in 0 until center.childCount) {
+            val v = center.getChildAt(i)
+            if (v === clockBox || v.visibility == View.GONE) continue
+            if (v is TextView && v.text.isNullOrEmpty()) { others += v.lineHeight } else others += v.measuredHeight
+            val lp = v.layoutParams as? LinearLayout.LayoutParams
+            if (lp != null) others += lp.topMargin + lp.bottomMargin
+        }
+        return (h - others - dp(28)).toFloat().coerceAtLeast(h * 0.4f)
+    }
     private var digitalZero: Boolean? = null
 
     /**

@@ -3,6 +3,11 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.8.2" to listOf(
+            "Surreal faces now fit their space, so sunrise and sunset are never pushed off the screen",
+            "Dripping face: real-looking paint drips with rounded drops and a shine, plus a drop that falls every few seconds",
+            "Spiral face: 3D look — a vortex that darkens toward the center, a shaded ribbon spiral, and numbers that shrink and fade as they sink in"
+        ),
         "1.8.1" to listOf(
             "Fixed: the clock no longer shifts up and down when you tap the screen or when dimming turns on or off"
         ),
