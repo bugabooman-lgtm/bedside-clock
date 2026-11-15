@@ -133,6 +133,47 @@ class SettingsActivity : Activity() {
         secSwitch.isChecked = Store.getBool(this, "analogSeconds", true)
         secSwitch.setOnCheckedChangeListener { _, on -> Store.put(this, "analogSeconds", on); refreshPreview() }
         add(settingRow("Second hand", "A smooth sweeping second hand", secSwitch))
+
+        // ---- surreal faces ----
+        box = analogBox
+        val srRow = LinearLayout(this)
+        srRow.orientation = LinearLayout.HORIZONTAL
+        srRow.gravity = Gravity.TOP
+        val srPreview = SurrealClockView(this)
+        fun refreshSurreal() {
+            srPreview.scheme = Store.getStr(this, "srScheme", "classic")
+            srPreview.showSeconds = Store.getBool(this, "srSeconds", false)
+            srPreview.invalidate()
+        }
+        refreshSurreal()
+        val srOpts = LinearLayout(this)
+        srOpts.orientation = LinearLayout.VERTICAL
+        srRow.addView(srPreview, LinearLayout.LayoutParams(dp(300), dp(300)).apply { topMargin = dp(20); rightMargin = dp(32) })
+        srRow.addView(srOpts, LinearLayout.LayoutParams(0, WRAP, 1f))
+        analogBox.addView(srRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(24) })
+        box = srOpts
+        section("Surreal faces")
+        add(settingRow("Shape", "Preview only — choose the clock style below",
+            choice(listOf("melt" to "Melting", "drip" to "Dripping", "spiral" to "Spiral"), "melt") {
+                srPreview.mode = it; srPreview.invalidate()
+            }))
+        add(settingRow("Colors", null, choice(SurrealOpts.SCHEMES, Store.getStr(this, "srScheme", "classic")) {
+            Store.put(this, "srScheme", it); refreshSurreal()
+        }))
+        val srSec = Switch(this)
+        srSec.isChecked = Store.getBool(this, "srSeconds", false)
+        srSec.setOnCheckedChangeListener { _, on -> Store.put(this, "srSeconds", on); refreshSurreal() }
+        add(settingRow("Second hand", null, srSec))
+        val srButtons = LinearLayout(this)
+        srButtons.orientation = LinearLayout.HORIZONTAL
+        srButtons.setPadding(0, dp(12), 0, dp(12))
+        for ((key, label) in listOf("surrealMelt" to "Use Melting", "surrealDrip" to "Use Dripping", "surrealSpiral" to "Use Spiral")) {
+            srButtons.addView(button(label) {
+                Store.put(this, "clockStyle", key)
+                toast("Clock style: " + Styles.name(key))
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { rightMargin = dp(10) })
+        }
+        srOpts.addView(srButtons)
         box = generalBox
 
         // ---- alarms ----

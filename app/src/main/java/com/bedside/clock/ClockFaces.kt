@@ -21,7 +21,10 @@ object Styles {
         "digital" to "Digital",
         "flipDark" to "Flip — black cards",
         "flipLight" to "Flip — white cards",
-        "analog" to "Analog"
+        "analog" to "Analog",
+        "surrealMelt" to "Surreal — melting",
+        "surrealDrip" to "Surreal — dripping",
+        "surrealSpiral" to "Surreal — spiral"
     )
     fun current(c: Context) = Store.getStr(c, "clockStyle", "digital")
     fun name(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "Digital"

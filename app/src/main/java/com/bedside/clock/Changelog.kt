@@ -3,6 +3,11 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.8" to listOf(
+            "Surreal clock faces: Melting, Dripping and Spiral — with warped numerals, droopy hands and shapes that slowly drift",
+            "Five color schemes for the surreal faces: Black & white, White & black, Desert, Ocean, Sunset",
+            "Surreal faces have their own section with a live preview in Settings → Analog Face"
+        ),
         "1.7" to listOf(
             "New Calendar watch face: day of the week (with 24-hour scale) at 9, month (with leap-year scale) at 3, date at 6",
             "Calendar face shows tonight's real moon phase in a starry window",

@@ -45,6 +45,7 @@ class ClockActivity : Activity() {
     private lateinit var flipView: FlipClockView
     private lateinit var analogView: AnalogClockView
     private lateinit var dateFlip: FlipRowView
+    private lateinit var surrealView: SurrealClockView
     private var style = "digital"
     private lateinit var dateView: TextView
     private lateinit var nextView: TextView
@@ -120,10 +121,12 @@ class ClockActivity : Activity() {
         weatherView.gravity = Gravity.CENTER
         flipView = FlipClockView(this)
         analogView = AnalogClockView(this)
+        surrealView = SurrealClockView(this)
         val clockBox = FrameLayout(this)
         clockBox.addView(clockRow, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER))
         clockBox.addView(flipView, FrameLayout.LayoutParams(MATCH, dp(300), Gravity.CENTER))
         clockBox.addView(analogView, FrameLayout.LayoutParams(dp(300), dp(300), Gravity.CENTER))
+        clockBox.addView(surrealView, FrameLayout.LayoutParams(dp(300), dp(300), Gravity.CENTER))
         // press and hold the clock to switch style
         clockBox.setOnLongClickListener {
             val keys = Styles.ALL.map { it.first }
@@ -323,6 +326,12 @@ class ClockActivity : Activity() {
                 if (dlp.height != dateH) { dlp.height = dateH; dateFlip.layoutParams = dlp }
                 return
             }
+            "surrealMelt", "surrealDrip", "surrealSpiral" -> {
+                val want = minOf(h * 0.8f, w * 0.62f).toInt()
+                val lp = surrealView.layoutParams
+                if (lp.height != want) { lp.width = want; lp.height = want; surrealView.layoutParams = lp }
+                return
+            }
             "analog" -> {
                 val want = minOf(h * 0.78f, w * 0.62f).toInt()
                 val lp = analogView.layoutParams
@@ -368,6 +377,10 @@ class ClockActivity : Activity() {
         dateFlip.visibility = flipView.visibility
         dateView.visibility = if (style.startsWith("flip")) View.GONE else View.VISIBLE
         analogView.visibility = if (style == "analog") View.VISIBLE else View.GONE
+        surrealView.visibility = if (style.startsWith("surreal")) View.VISIBLE else View.GONE
+        surrealView.mode = when (style) { "surrealDrip" -> "drip"; "surrealSpiral" -> "spiral"; else -> "melt" }
+        surrealView.scheme = Store.getStr(this, "srScheme", "classic")
+        surrealView.showSeconds = Store.getBool(this, "srSeconds", false)
         analogView.showSeconds = Store.getBool(this, "analogSeconds", true)
         analogView.dialKey = Store.getStr(this, "anDial", "black")
         analogView.accentKey = Store.getStr(this, "anAccent", "orange")
@@ -392,6 +405,9 @@ class ClockActivity : Activity() {
                 fp.digitColor = bright
             }
             analogView.night = true
+            surrealView.night = true
+            surrealView.nightBright = bright
+            surrealView.nightFaint = faint
             analogView.nightBright = bright
             analogView.nightFaint = faint
         } else {
@@ -405,10 +421,12 @@ class ClockActivity : Activity() {
                 }
             }
             analogView.night = false
+            surrealView.night = false
         }
         flipView.invalidate()
         dateFlip.invalidate()
         analogView.invalidate()
+        surrealView.invalidate()
     }
     private var lastUpdTick = -1
 
