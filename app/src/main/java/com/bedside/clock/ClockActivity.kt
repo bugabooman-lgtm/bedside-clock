@@ -30,7 +30,6 @@ import android.widget.TextView
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import kotlin.random.Random
 
 /** The bedside clock face. Stays on screen all night. */
 class ClockActivity : Activity() {
@@ -263,9 +262,6 @@ class ClockActivity : Activity() {
         if (nowMin != lastMin || force) {
             lastMin = nowMin
             renderClock(now)
-            // drift the face a few pixels each minute so nothing sits in one spot all night
-            center.translationX = 0f  // keep the colon exactly centred
-            center.translationY = Random.nextInt(-dp(10), dp(10) + 1).toFloat()
         }
         applyLighting(nowMin, force)
         updateSleepChip()

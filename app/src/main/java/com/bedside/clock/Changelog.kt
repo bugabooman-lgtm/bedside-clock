@@ -3,6 +3,9 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.8.1" to listOf(
+            "Fixed: the clock no longer shifts up and down when you tap the screen or when dimming turns on or off"
+        ),
         "1.8" to listOf(
             "Surreal clock faces: Melting, Dripping and Spiral — with warped numerals, droopy hands and shapes that slowly drift",
             "Five color schemes for the surreal faces: Black & white, White & black, Desert, Ocean, Sunset",
