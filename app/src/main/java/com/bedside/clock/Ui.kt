@@ -62,8 +62,9 @@ fun Context.button(label: String, primary: Boolean = false, danger: Boolean = fa
     return v
 }
 
-/** A row of segmented choices; the picked one is highlighted. */
+/** A row of segmented choices; the picked one is highlighted. More than 4 options become a dropdown. */
 fun <T> Context.choice(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit): View {
+    if (options.size > 4) return dropdown(options, selected, onPick)
     val box = LinearLayout(this)
     box.orientation = LinearLayout.HORIZONTAL
     box.background = roundBg(Col.PANEL2, dp(12).toFloat(), Col.LINE, dp(1))
@@ -166,4 +167,49 @@ fun Activity.immersive() {
         it.hide(WindowInsets.Type.systemBars())
         it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
+}
+
+/** A dropdown list styled to match the rest of the app. */
+fun <T> Context.dropdown(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit): View {
+    val ctx = this
+    val labels = options.map { it.second }
+    val adapter = object : android.widget.ArrayAdapter<String>(ctx, android.R.layout.simple_spinner_item, labels) {
+        private fun style(v: View, dropdown: Boolean): View {
+            (v as? TextView)?.let {
+                it.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                it.setTextColor(Col.TEXT)
+                it.setPadding(ctx.dp(16), ctx.dp(if (dropdown) 14 else 10), ctx.dp(16), ctx.dp(if (dropdown) 14 else 10))
+                if (dropdown) it.setBackgroundColor(Col.PANEL2)
+            }
+            return v
+        }
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+            style(super.getView(position, convertView, parent), false)
+        override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View =
+            style(super.getDropDownView(position, convertView, parent), true)
+    }
+    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+    val spinner = android.widget.Spinner(this, android.widget.Spinner.MODE_DROPDOWN)
+    spinner.adapter = adapter
+    spinner.background = roundBg(Col.PANEL2, dp(12).toFloat(), Col.LINE, dp(1))
+    spinner.setPopupBackgroundDrawable(roundBg(Col.PANEL2, dp(12).toFloat(), Col.LINE, dp(1)))
+    spinner.minimumWidth = dp(260)
+    val start = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+    spinner.setSelection(start, false)
+    var ready = false
+    spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+            if (!ready) { ready = true; if (position == start) return }
+            onPick(options[position].first)
+        }
+        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+    }
+    // a small arrow so it reads as a dropdown
+    val box = LinearLayout(this)
+    box.orientation = LinearLayout.HORIZONTAL
+    box.gravity = Gravity.CENTER_VERTICAL
+    box.addView(spinner, LinearLayout.LayoutParams(WRAP, WRAP))
+    box.addView(tv("▾", 18f, Col.DIM).apply { setPadding(dp(8), 0, 0, 0) })
+    box.setOnClickListener { spinner.performClick() }
+    return box
 }

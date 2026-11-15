@@ -3,6 +3,10 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.9.2" to listOf(
+            "Clock style is now a dropdown list in Settings (it had too many choices to fit)",
+            "Other long lists (dial color, numbers, date window, surreal and slime colors) are dropdowns too"
+        ),
         "1.9.1" to listOf(
             "Dripping face redone like a melting clock: the bottom runs straight down into a curtain of drips, with the rim outlining every drip",
             "New Slime face: a warped gold-framed clock with a glossy pale-blue face and Roman numerals, coated in glossy slime that drips off — 6 slime colors",
