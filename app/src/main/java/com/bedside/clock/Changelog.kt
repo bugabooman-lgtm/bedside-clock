@@ -3,6 +3,11 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.6.1" to listOf(
+            "Settings now has tabs: General, Analog face, and Updates & about",
+            "Analog face tab shows a live preview while you change the options",
+            "Tapping the update note on the clock opens the Updates tab"
+        ),
         "1.6" to listOf(
             "Analog clock redesigned like a real watch: metal bezel, dial with depth, minute track, tapered hands with shadows",
             "The date now sits in a window at 3 o'clock on the analog face",

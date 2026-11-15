@@ -154,7 +154,7 @@ class ClockActivity : Activity() {
         updateChip.setPadding(dp(14), dp(8), dp(14), dp(8))
         updateChip.background = roundBg(Col.PANEL, dp(20).toFloat(), Col.LINE, dp(1))
         updateChip.visibility = View.GONE
-        updateChip.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        updateChip.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java).putExtra("tab", "updates")) }
         root.addView(updateChip, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START).apply {
             topMargin = dp(16); leftMargin = dp(18)
         })

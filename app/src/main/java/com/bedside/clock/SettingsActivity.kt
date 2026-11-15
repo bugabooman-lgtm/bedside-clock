@@ -48,13 +48,28 @@ class SettingsActivity : Activity() {
         header.addView(tv("Settings", 30f).apply { setPadding(dp(22), 0, 0, 0) })
         outer.addView(header)
 
-        val box = LinearLayout(this)
-        box.orientation = LinearLayout.VERTICAL
-        box.setPadding(0, dp(10), 0, dp(40))
+        // ---- tabs: General / Analog face / Updates ----
+        fun tabBox(): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(4), 0, dp(40))
+        }
+        val generalBox = tabBox()
+        val analogBox = tabBox()
+        val updatesBox = tabBox()
+        val tabs = listOf("general" to generalBox, "analog" to analogBox, "updates" to updatesBox)
         val scroll = ScrollView(this)
-        scroll.addView(box)
+        fun showTab(key: String) {
+            scroll.removeAllViews()
+            scroll.addView(tabs.first { it.first == key }.second)
+            scroll.scrollTo(0, 0)
+            Store.put(this, "settingsTab", key)
+        }
+        val startTab = intent.getStringExtra("tab") ?: Store.getStr(this, "settingsTab", "general")
+        val tabBar = choice(listOf("general" to "General", "analog" to "Analog face", "updates" to "Updates & about"), startTab) { showTab(it) }
+        outer.addView(tabBar, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(16); bottomMargin = dp(4) })
         outer.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
 
+        var box = generalBox
         fun section(name: String) {
             box.addView(tv(name.uppercase(), 14f, Col.ACCENT).apply { setPadding(0, dp(22), 0, dp(4)) })
         }
@@ -77,17 +92,46 @@ class SettingsActivity : Activity() {
         }
         switchRow("0 before single-digit hours", "Shows 06:30 instead of 6:30 on the clock", "hourZero", true)
 
-        // ---- analog face ----
+        // ---- analog face (own tab, with a live preview) ----
+        box = analogBox
+        val preview = AnalogClockView(this)
+        fun refreshPreview() {
+            preview.dialKey = Store.getStr(this, "anDial", "black")
+            preview.accentKey = Store.getStr(this, "anAccent", "orange")
+            preview.numerals = Store.getStr(this, "anNumerals", "arabic")
+            preview.fontKey = Store.getStr(this, "anFont", "modern")
+            preview.dateMode = Store.getStr(this, "anDate", "daydate")
+            preview.showSeconds = Store.getBool(this, "analogSeconds", true)
+            preview.invalidate()
+        }
+        refreshPreview()
+        val analogRow = LinearLayout(this)
+        analogRow.orientation = LinearLayout.HORIZONTAL
+        analogRow.gravity = Gravity.TOP
+        val analogOpts = LinearLayout(this)
+        analogOpts.orientation = LinearLayout.VERTICAL
+        analogRow.addView(preview, LinearLayout.LayoutParams(dp(300), dp(300)).apply { topMargin = dp(20); rightMargin = dp(32) })
+        analogRow.addView(analogOpts, LinearLayout.LayoutParams(0, WRAP, 1f))
+        analogBox.addView(analogRow)
+        analogBox.addView(button("Use the analog clock") {
+            Store.put(this, "clockStyle", "analog")
+            toast("Clock style set to Analog")
+        }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(16) })
+        box = analogOpts
         section("Analog clock face")
         fun pick(title: String, key: String, def: String, opts: List<Pair<String, String>>) {
-            add(settingRow(title, null, choice(opts, Store.getStr(this, key, def)) { Store.put(this, key, it) }))
+            add(settingRow(title, null, choice(opts, Store.getStr(this, key, def)) { Store.put(this, key, it); refreshPreview() }))
         }
         pick("Dial colour", "anDial", "black", AnalogOpts.DIALS.map { it.first to it.second })
         pick("Second hand colour", "anAccent", "orange", AnalogOpts.ACCENT_NAMES)
         pick("Numbers", "anNumerals", "arabic", AnalogOpts.NUMERALS)
         pick("Number font", "anFont", "modern", AnalogOpts.FONTS)
         pick("Date window", "anDate", "daydate", AnalogOpts.DATES)
-        switchRow("Second hand", "A smooth sweeping second hand", "analogSeconds", true)
+        val secSwitch = Switch(this)
+        secSwitch.isChecked = Store.getBool(this, "analogSeconds", true)
+        secSwitch.setOnCheckedChangeListener { _, on -> Store.put(this, "analogSeconds", on); refreshPreview() }
+        add(settingRow("Second hand", "A smooth sweeping second hand", secSwitch))
+        box = generalBox
 
         // ---- alarms ----
         section("Alarms")
@@ -162,7 +206,8 @@ class SettingsActivity : Activity() {
         }
         add(settingRow("Keep screen on while charging", "Developer options → Stay awake (optional — the clock already keeps the screen on while it's open)", null))
 
-        // ---- updates ----
+        // ---- updates & about (own tab) ----
+        box = updatesBox
         section("Updates")
         val autoSwitch = Switch(this)
         autoSwitch.isChecked = Updater.autoOn(this)
@@ -203,6 +248,7 @@ class SettingsActivity : Activity() {
         section("About")
         add(settingRow("Bedside Clock", versionText(), button("Change log") { showChangelog() }))
 
+        showTab(if (tabs.any { it.first == startTab }) startTab else "general")
         setContentView(outer)
     }
 
