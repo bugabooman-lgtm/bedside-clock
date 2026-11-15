@@ -3,6 +3,9 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.3.1" to listOf(
+            "The colon in the time now sits exactly in the middle of the screen"
+        ),
         "1.3" to listOf(
             "The Dim button now switches dimming on and off — it works during night hours too",
             "Dim brightness setting, plus a quick brightness slider: press and hold the Dim button",

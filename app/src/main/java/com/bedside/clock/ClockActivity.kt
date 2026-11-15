@@ -37,7 +37,10 @@ class ClockActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var root: FrameLayout
     private lateinit var center: LinearLayout
-    private lateinit var clock: TextView
+    private lateinit var hoursView: TextView
+    private lateinit var colonView: TextView
+    private lateinit var minsView: TextView
+    private val clockParts get() = listOf(hoursView, colonView, minsView)
     private lateinit var dateView: TextView
     private lateinit var nextView: TextView
     private lateinit var weatherView: TextView
@@ -87,17 +90,29 @@ class ClockActivity : Activity() {
         center = LinearLayout(this)
         center.orientation = LinearLayout.VERTICAL
         center.gravity = Gravity.CENTER
-        clock = tv("", 200f, Col.CLOCK, light = true)
-        clock.includeFontPadding = false
-        clock.gravity = Gravity.CENTER
-        clock.maxLines = 1
+        // Hours | : | minutes — the two sides get equal width, so the colon sits dead centre.
+        val clockRow = LinearLayout(this)
+        clockRow.orientation = LinearLayout.HORIZONTAL
+        clockRow.isBaselineAligned = true
+        hoursView = tv("", 200f, Col.CLOCK, light = true)
+        hoursView.gravity = Gravity.END
+        colonView = tv(":", 200f, Col.CLOCK, light = true)
+        minsView = tv("", 200f, Col.CLOCK, light = true)
+        minsView.gravity = Gravity.START
+        for (v in listOf(hoursView, colonView, minsView)) {
+            v.includeFontPadding = false
+            v.maxLines = 1
+        }
+        clockRow.addView(hoursView, LinearLayout.LayoutParams(0, WRAP, 1f))
+        clockRow.addView(colonView, LinearLayout.LayoutParams(WRAP, WRAP))
+        clockRow.addView(minsView, LinearLayout.LayoutParams(0, WRAP, 1f))
         dateView = tv("", 30f, Col.DIM, light = true)
         dateView.gravity = Gravity.CENTER
         nextView = tv("", 22f, Col.ACCENT)
         nextView.gravity = Gravity.CENTER
         weatherView = tv("", 22f, Col.DIM)
         weatherView.gravity = Gravity.CENTER
-        center.addView(clock)
+        center.addView(clockRow, LinearLayout.LayoutParams(MATCH, WRAP))
         center.addView(dateView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
         center.addView(nextView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(10) })
         center.addView(weatherView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(6) })
@@ -198,7 +213,7 @@ class ClockActivity : Activity() {
             lastMin = nowMin
             renderClock(now)
             // drift the face a few pixels each minute so nothing sits in one spot all night
-            center.translationX = Random.nextInt(-dp(14), dp(14) + 1).toFloat()
+            center.translationX = 0f  // keep the colon exactly centred
             center.translationY = Random.nextInt(-dp(10), dp(10) + 1).toFloat()
         }
         applyLighting(nowMin, force)
@@ -208,13 +223,16 @@ class ClockActivity : Activity() {
 
     private fun renderClock(now: Calendar) {
         val (main, ampm) = fmtTime(this, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE))
-        val full = if (ampm.isEmpty()) main else "$main $ampm"
-        val s = SpannableString(full)
+        val hh = main.substringBefore(':')
+        val mm = main.substringAfter(':')
+        val right = if (ampm.isEmpty()) mm else "$mm $ampm"
+        val s = SpannableString(right)
         if (ampm.isNotEmpty()) {
-            s.setSpan(RelativeSizeSpan(0.18f), main.length, full.length, 0)
-            s.setSpan(ForegroundColorSpan(if (isNight) dimColors().second else Col.DIM), main.length, full.length, 0)
+            s.setSpan(RelativeSizeSpan(0.18f), mm.length, right.length, 0)
+            s.setSpan(ForegroundColorSpan(if (isNight) dimColors().second else Col.DIM), mm.length, right.length, 0)
         }
-        clock.text = s
+        hoursView.text = hh
+        minsView.text = s
         fitClock()
         dateView.text = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now.time)
         val n = Scheduler.next(this)
@@ -231,14 +249,18 @@ class ClockActivity : Activity() {
         val h = root.height
         if (w == 0 || h == 0) return
         val (main, ampm) = fmtTime(this, lastMin.coerceAtLeast(0) / 60, lastMin.coerceAtLeast(0) % 60)
-        val p = Paint(clock.paint)
+        val p = Paint(hoursView.paint)
         var size = h * 0.52f
         p.textSize = size
-        var width = p.measureText(main)
-        if (ampm.isNotEmpty()) { p.textSize = size * 0.18f; width += p.measureText(" $ampm") }
-        val maxW = w * 0.9f
+        val left = p.measureText(main.substringBefore(':'))
+        var right = p.measureText(main.substringAfter(':'))
+        val colon = p.measureText(":")
+        if (ampm.isNotEmpty()) { p.textSize = size * 0.18f; right += p.measureText(" $ampm") }
+        // both halves are as wide as the wider one, so the colon stays centred
+        val width = 2 * maxOf(left, right) + colon
+        val maxW = w * 0.92f
         if (width > maxW) size *= maxW / width
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+        for (v in clockParts) v.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
     }
 
     private var isNightRendered = false
@@ -269,7 +291,7 @@ class ClockActivity : Activity() {
         if (night != isNight || force) {
             isNight = night
             val (bright, faint) = dimColors()
-            clock.setTextColor(if (night) bright else Col.CLOCK)
+            for (v in clockParts) v.setTextColor(if (night) bright else Col.CLOCK)
             dateView.setTextColor(if (night) faint else Col.DIM)
             nextView.setTextColor(if (night) faint else Col.ACCENT)
             weatherView.setTextColor(if (night) faint else Col.DIM)
