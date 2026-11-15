@@ -303,9 +303,17 @@ class SurrealClockView(c: Context) : View(c) {
         val hy = py(0.0, 0.0)
         // in the dark centre of the spiral, light hands read better
         val handInk = if (mode == "spiral" && !night && !isDark(face)) mix(ink, 0xFFFFFFFF.toInt(), 0.85f) else ink
-        hand(cv, hx, hy, hrs * PI / 6, R * 0.38f, R * 0.028f, handInk, 0.18f)
-        hand(cv, hx, hy, mins * PI / 30, R * 0.58f, R * 0.018f, handInk, 0.24f)
-        if (showSeconds) hand(cv, hx, hy, sec * PI / 30, R * 0.62f, R * 0.007f, if (night) nightFaint else 0xFFC0392B.toInt(), 0.12f)
+        val secCol = if (night) nightFaint else 0xFFC0392B.toInt()
+        if (mode == "melt") {
+            // hands bend with the melted face and reach right in among the numbers
+            warpHand(cv, hrs * PI / 6, 0.5, R * 0.032f, handInk)
+            warpHand(cv, mins * PI / 30, 0.66, R * 0.022f, handInk)
+            if (showSeconds) warpHand(cv, sec * PI / 30, 0.7, R * 0.008f, secCol)
+        } else {
+            hand(cv, hx, hy, hrs * PI / 6, R * 0.38f, R * 0.028f, handInk, 0.18f)
+            hand(cv, hx, hy, mins * PI / 30, R * 0.58f, R * 0.018f, handInk, 0.24f)
+            if (showSeconds) hand(cv, hx, hy, sec * PI / 30, R * 0.62f, R * 0.007f, secCol, 0.12f)
+        }
         p.style = Paint.Style.FILL
         p.color = handInk
         cv.drawCircle(hx, hy, R * 0.03f, p)
@@ -378,6 +386,40 @@ class SurrealClockView(c: Context) : View(c) {
                 ly = y
             }
         }
+    }
+
+    /** Draws a hand along a list of points (x0,y0,x1,y1…), tapering from [w0] to [w1], with a soft shadow. */
+    private fun curvyHand(cv: Canvas, pts: FloatArray, w0: Float, w1: Float, color: Int, outline: Int = 0) {
+        val n = pts.size / 2
+        p.style = Paint.Style.STROKE
+        p.strokeCap = Paint.Cap.ROUND
+        for (pass in 0..2) {
+            if (pass == 1 && outline == 0) continue
+            for (i in 1 until n) {
+                val f = i.toFloat() / (n - 1)
+                val w = w0 + (w1 - w0) * f
+                when (pass) {
+                    0 -> { p.color = 0x30000000; p.strokeWidth = w
+                        cv.drawLine(pts[2 * i - 2] + w * 0.6f, pts[2 * i - 1] + w * 1.1f, pts[2 * i] + w * 0.6f, pts[2 * i + 1] + w * 1.1f, p) }
+                    1 -> { p.color = outline; p.strokeWidth = w * 1.6f
+                        cv.drawLine(pts[2 * i - 2], pts[2 * i - 1], pts[2 * i], pts[2 * i + 1], p) }
+                    else -> { p.color = color; p.strokeWidth = w
+                        cv.drawLine(pts[2 * i - 2], pts[2 * i - 1], pts[2 * i], pts[2 * i + 1], p) }
+                }
+            }
+        }
+    }
+
+    /** A hand that follows the face's warp from the centre out to radius [rEnd] — it bends with the numerals. */
+    private fun warpHand(cv: Canvas, a: Double, rEnd: Double, w: Float, color: Int) {
+        val n = 16
+        val pts = FloatArray((n + 1) * 2)
+        for (k in 0..n) {
+            val r = rEnd * k / n
+            pts[2 * k] = px(a, r)
+            pts[2 * k + 1] = py(a, r)
+        }
+        curvyHand(cv, pts, w, w * 0.45f, color)
     }
 
     private fun hand(cv: Canvas, x0: Float, y0: Float, a: Double, len: Float, width: Float, color: Int, droop: Float) {
@@ -515,9 +557,9 @@ class SurrealClockView(c: Context) : View(c) {
         val mins = cal.get(Calendar.MINUTE) + sec / 60.0
         val hrs = (cal.get(Calendar.HOUR) % 12) + mins / 60.0
         val hx = px(0.0, 0.0); val hy = py(0.0, 0.0)
-        hand(cv, hx, hy, hrs * PI / 6, R * 0.36f, R * 0.035f, ink, 0.08f)
-        hand(cv, hx, hy, mins * PI / 30, R * 0.58f, R * 0.022f, ink, 0.1f)
-        if (showSeconds) hand(cv, hx, hy, sec * PI / 30, R * 0.62f, R * 0.007f, if (night) nightFaint else goo, 0.05f)
+        warpHand(cv, hrs * PI / 6, 0.5, R * 0.04f, ink)
+        warpHand(cv, mins * PI / 30, 0.8, R * 0.026f, ink)
+        if (showSeconds) warpHand(cv, sec * PI / 30, 0.82, R * 0.008f, if (night) nightFaint else goo)
         p.style = Paint.Style.FILL
         p.color = if (night) nightFaint else 0xFFD4A23A.toInt()
         cv.drawCircle(hx, hy, R * 0.04f, p)
@@ -718,21 +760,24 @@ class SurrealClockView(c: Context) : View(c) {
         val mins = cal.get(Calendar.MINUTE) + sec / 60.0
         val hrs = (cal.get(Calendar.HOUR) % 12) + mins / 60.0
         val light = if (night) nightBright else 0xFFF6F6F6.toInt()
-        for ((ang, len, w) in listOf(Triple(hrs * PI / 6, 0.5f, 0.035f), Triple(mins * PI / 30, 0.8f, 0.024f))) {
-            p.style = Paint.Style.STROKE
-            p.strokeCap = Paint.Cap.ROUND
-            p.color = 0xCC000000.toInt()
-            p.strokeWidth = R * w * 1.6f
-            cv.drawLine(cx, cy, x(ang, R * len), y(ang, R * len), p)
-            p.color = light
-            p.strokeWidth = R * w
-            cv.drawLine(cx, cy, x(ang, R * len), y(ang, R * len), p)
+        // each hand curls out from the centre like a spiral arm and ends on the outer turn of the dial:
+        // the hour hand at its numeral, the minute hand at its minute mark
+        fun spiralHand(a: Double, tipFrac: Float, w: Float, color: Int, outline: Int) {
+            val tip = ro(a) * tipFrac
+            val n = 28
+            val pts = FloatArray((n + 1) * 2)
+            for (k in 0..n) {
+                val f = k.toDouble() / n
+                val phi = a - Math.pow(1 - f, 1.5) * 1.3
+                val r = (tip * f).toFloat()
+                pts[2 * k] = x(phi, r)
+                pts[2 * k + 1] = y(phi, r)
+            }
+            curvyHand(cv, pts, R * w, R * w * 0.45f, color, outline)
         }
-        if (showSeconds) {
-            p.color = if (night) nightFaint else 0xFFC0392B.toInt()
-            p.strokeWidth = R * 0.008f
-            cv.drawLine(x(sec * PI / 30 + PI, R * 0.15f), y(sec * PI / 30 + PI, R * 0.15f), x(sec * PI / 30, R * 0.88f), y(sec * PI / 30, R * 0.88f), p)
-        }
+        spiralHand(hrs * PI / 6, 0.66f, 0.034f, light, 0xCC000000.toInt())
+        spiralHand(mins * PI / 30, 0.9f, 0.024f, light, 0xCC000000.toInt())
+        if (showSeconds) spiralHand(sec * PI / 30, 0.92f, 0.008f, if (night) nightFaint else 0xFFC0392B.toInt(), 0)
         p.style = Paint.Style.FILL
         p.color = light
         cv.drawCircle(cx, cy, R * 0.035f, p)
