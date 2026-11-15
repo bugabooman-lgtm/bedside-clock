@@ -67,6 +67,17 @@ class SettingsActivity : Activity() {
         section("Clock")
         add(settingRow("Clock format", null,
             choice(listOf(false to "12-hour", true to "24-hour"), Store.is24(this)) { Store.put(this, "is24", it) }))
+        add(settingRow("Clock style", "Tip: press and hold the clock to switch styles",
+            choice(Styles.ALL, Styles.current(this)) { Store.put(this, "clockStyle", it) }))
+        fun switchRow(title: String, sub: String?, key: String, def: Boolean) {
+            val sw = Switch(this)
+            sw.isChecked = Store.getBool(this, key, def)
+            sw.setOnCheckedChangeListener { _, on -> Store.put(this, key, on) }
+            add(settingRow(title, sub, sw))
+        }
+        switchRow("0 before single-digit hours", "Shows 06:30 instead of 6:30 on the clock", "hourZero", true)
+        switchRow("Analog: second hand", null, "analogSeconds", true)
+        switchRow("Analog: numbers", null, "analogNumbers", true)
 
         // ---- alarms ----
         section("Alarms")

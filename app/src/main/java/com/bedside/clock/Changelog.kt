@@ -3,6 +3,13 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "1.5" to listOf(
+            "Clock styles: Digital, Flip clock with black cards, Flip clock with white cards, and Analog",
+            "Flip clock cards fold over with a 3D flip animation when the time changes",
+            "Analog clock with smooth second hand (can be switched off) and numbers",
+            "Press and hold the clock to switch styles, or pick one in Settings → Clock",
+            "Hours now show a leading 0 (06:30) — can be switched off in Settings"
+        ),
         "1.4" to listOf(
             "Updates: Settings → Updates → Check for updates",
             "Automatic updates — installed only in the daytime, never during night hours or within 90 minutes of an alarm",

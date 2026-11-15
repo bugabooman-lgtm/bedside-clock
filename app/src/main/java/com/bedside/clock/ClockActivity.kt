@@ -41,6 +41,10 @@ class ClockActivity : Activity() {
     private lateinit var colonView: TextView
     private lateinit var minsView: TextView
     private val clockParts get() = listOf(hoursView, colonView, minsView)
+    private lateinit var clockRow: LinearLayout
+    private lateinit var flipView: FlipClockView
+    private lateinit var analogView: AnalogClockView
+    private var style = "digital"
     private lateinit var dateView: TextView
     private lateinit var nextView: TextView
     private lateinit var weatherView: TextView
@@ -92,7 +96,7 @@ class ClockActivity : Activity() {
         center.orientation = LinearLayout.VERTICAL
         center.gravity = Gravity.CENTER
         // Hours | : | minutes — the two sides get equal width, so the colon sits dead centre.
-        val clockRow = LinearLayout(this)
+        clockRow = LinearLayout(this)
         clockRow.orientation = LinearLayout.HORIZONTAL
         clockRow.isBaselineAligned = true
         hoursView = tv("", 200f, Col.CLOCK, light = true)
@@ -113,7 +117,22 @@ class ClockActivity : Activity() {
         nextView.gravity = Gravity.CENTER
         weatherView = tv("", 22f, Col.DIM)
         weatherView.gravity = Gravity.CENTER
-        center.addView(clockRow, LinearLayout.LayoutParams(MATCH, WRAP))
+        flipView = FlipClockView(this)
+        analogView = AnalogClockView(this)
+        val clockBox = FrameLayout(this)
+        clockBox.addView(clockRow, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER))
+        clockBox.addView(flipView, FrameLayout.LayoutParams(MATCH, dp(300), Gravity.CENTER))
+        clockBox.addView(analogView, FrameLayout.LayoutParams(dp(300), dp(300), Gravity.CENTER))
+        // press and hold the clock to switch style
+        clockBox.setOnLongClickListener {
+            val keys = Styles.ALL.map { it.first }
+            val next = keys[(keys.indexOf(style) + 1) % keys.size]
+            Store.put(this, "clockStyle", next)
+            applyStyle()
+            toast("Clock style: " + Styles.name(next))
+            true
+        }
+        center.addView(clockBox, LinearLayout.LayoutParams(MATCH, WRAP))
         center.addView(dateView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
         center.addView(nextView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(10) })
         center.addView(weatherView, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(6) })
@@ -178,6 +197,7 @@ class ClockActivity : Activity() {
         weatherAt = 0L
         showBar()
         handler.removeCallbacks(tick)
+        applyStyle()
         handler.post(tick)
         showWhatsNew()
     }
@@ -267,8 +287,11 @@ class ClockActivity : Activity() {
             s.setSpan(RelativeSizeSpan(0.18f), mm.length, right.length, 0)
             s.setSpan(ForegroundColorSpan(if (isNight) dimColors().second else Col.DIM), mm.length, right.length, 0)
         }
-        hoursView.text = hh
+        val zero = Store.getBool(this, "hourZero", true)
+        hoursView.text = if (zero) hh.padStart(2, '0') else hh
         minsView.text = s
+        flipView.setTime((if (zero) hh.padStart(2, '0') else hh.padStart(2, ' ')) + mm, ampm)
+        analogView.invalidate()
         fitClock()
         dateView.text = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now.time)
         val n = Scheduler.next(this)
@@ -285,10 +308,25 @@ class ClockActivity : Activity() {
         val h = root.height
         if (w == 0 || h == 0) return
         val (main, ampm) = fmtTime(this, lastMin.coerceAtLeast(0) / 60, lastMin.coerceAtLeast(0) % 60)
+        when (style) {
+            "flipDark", "flipLight" -> {
+                val want = (h * 0.58f).toInt()
+                val lp = flipView.layoutParams
+                if (lp.height != want) { lp.height = want; flipView.layoutParams = lp }
+                return
+            }
+            "analog" -> {
+                val want = minOf(h * 0.62f, w * 0.55f).toInt()
+                val lp = analogView.layoutParams
+                if (lp.height != want) { lp.width = want; lp.height = want; analogView.layoutParams = lp }
+                return
+            }
+        }
         val p = Paint(hoursView.paint)
         var size = h * 0.52f
         p.textSize = size
-        val left = p.measureText(main.substringBefore(':'))
+        val hh = main.substringBefore(':')
+        val left = p.measureText(if (Store.getBool(this, "hourZero", true)) hh.padStart(2, '0') else hh)
         var right = p.measureText(main.substringAfter(':'))
         val colon = p.measureText(":")
         if (ampm.isNotEmpty()) { p.textSize = size * 0.18f; right += p.measureText(" $ampm") }
@@ -300,6 +338,45 @@ class ClockActivity : Activity() {
     }
 
     private var isNightRendered = false
+
+    /** Shows the chosen clock style. */
+    private fun applyStyle() {
+        style = Styles.current(this)
+        clockRow.visibility = if (style == "digital") View.VISIBLE else View.GONE
+        flipView.visibility = if (style.startsWith("flip")) View.VISIBLE else View.GONE
+        analogView.visibility = if (style == "analog") View.VISIBLE else View.GONE
+        analogView.showSeconds = Store.getBool(this, "analogSeconds", true)
+        analogView.showNumbers = Store.getBool(this, "analogNumbers", true)
+        faceColors(isNight)
+        lastMin = -1
+        fitClock()
+        update(true)
+    }
+
+    /** Colours for the flip and analog faces, day or dimmed. */
+    private fun faceColors(night: Boolean) {
+        val (bright, faint) = dimColors()
+        if (night) {
+            flipView.cardColor = 0xFF120A08.toInt()
+            flipView.digitColor = bright
+            analogView.faceColor = bright
+            analogView.dimColor = faint
+            analogView.secondColor = faint
+        } else {
+            if (style == "flipLight") {
+                flipView.cardColor = 0xFFF2F2F0.toInt()
+                flipView.digitColor = 0xFF141414.toInt()
+            } else {
+                flipView.cardColor = 0xFF1E1E21.toInt()
+                flipView.digitColor = 0xFFF2F2F2.toInt()
+            }
+            analogView.faceColor = Col.CLOCK
+            analogView.dimColor = Col.DIM
+            analogView.secondColor = Col.ACCENT
+        }
+        flipView.invalidate()
+        analogView.invalidate()
+    }
     private var lastUpdTick = -1
 
     /** (clock colour, small-text colour) for the dimmed screen. */
@@ -329,6 +406,7 @@ class ClockActivity : Activity() {
             isNight = night
             val (bright, faint) = dimColors()
             for (v in clockParts) v.setTextColor(if (night) bright else Col.CLOCK)
+            faceColors(night)
             dateView.setTextColor(if (night) faint else Col.DIM)
             nextView.setTextColor(if (night) faint else Col.ACCENT)
             weatherView.setTextColor(if (night) faint else Col.DIM)
