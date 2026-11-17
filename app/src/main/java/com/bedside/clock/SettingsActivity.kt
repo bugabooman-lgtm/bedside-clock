@@ -218,6 +218,12 @@ class SettingsActivity : Activity() {
         add(settingRow("Night ends", null, timeButton("nightTo", Store.nightTo(this))))
         add(settingRow("Dim brightness", "How bright the screen is when dimmed (left = darkest). Tip: hold the Dim button on the clock to adjust while you watch.",
             seek(Store.nightBright(this) / 0.3f, 0f) { v, _ -> Store.put(this, "nightBright", v * 0.3f) }))
+        add(settingRow("Extra dim", "Darkens the clock even more, past the lowest backlight setting (left = off)",
+            seek(Store.getFloat(this, "extraDim", 0f) / 0.9f, 0f) { v, _ -> Store.put(this, "extraDim", v * 0.9f) }))
+        add(settingRow("Tablet's own Extra dim", "Samsung's setting that lowers the backlight itself. Look for Extra dim under Visibility enhancements.",
+            button("Open") {
+                try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) {}
+            }))
         add(settingRow("Dim color", null,
             choice(listOf("red" to "Red", "amber" to "Amber", "grey" to "Grey"), Store.getStr(this, "dimColor", "red")) {
                 Store.put(this, "dimColor", it)

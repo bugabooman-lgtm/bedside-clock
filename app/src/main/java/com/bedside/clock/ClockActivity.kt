@@ -54,6 +54,7 @@ class ClockActivity : Activity() {
     private lateinit var updateChip: TextView
     private lateinit var bar: LinearLayout
     private lateinit var sunrise: View
+    private lateinit var extraDimView: View
 
     private var lastMin = -1
     private var peekUntil = 0L
@@ -182,6 +183,12 @@ class ClockActivity : Activity() {
         }
         dimBtn.setOnLongClickListener { dimDialog(); true }
         barBtn("⚙  Settings") { startActivity(Intent(this, SettingsActivity::class.java)) }
+        // black layer that darkens the clock below the backlight's lowest setting (sits under the buttons)
+        extraDimView = View(this)
+        extraDimView.setBackgroundColor(0xFF000000.toInt())
+        extraDimView.alpha = 0f
+        extraDimView.isClickable = false
+        root.addView(extraDimView, FrameLayout.LayoutParams(MATCH, MATCH))
         root.addView(bar, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = dp(20) })
 
         setContentView(root)
@@ -491,6 +498,9 @@ class ClockActivity : Activity() {
             night -> nightLevel
             else -> WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
+        // extra dim: 0..0.9 of black over the clock, only while dimmed
+        val extra = if (night) Store.getFloat(this, "extraDim", 0f).coerceIn(0f, 0.9f) else 0f
+        if (extraDimView.alpha != extra) extraDimView.alpha = extra
         val lp = window.attributes
         if (lp.screenBrightness != brightness) {
             lp.screenBrightness = brightness
@@ -555,6 +565,20 @@ class ClockActivity : Activity() {
             override fun onStopTrackingTouch(sb: SeekBar) {}
         })
         box.addView(seek, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(18); bottomMargin = dp(10) })
+        box.addView(tv("Extra dim", 20f).apply { setPadding(0, dp(8), 0, 0) })
+        box.addView(tv("Darkens the clock further once the slider above is all the way left", 15f, Col.DIM))
+        val extra = SeekBar(this)
+        extra.max = 90
+        extra.progress = (Store.getFloat(this, "extraDim", 0f) * 100).toInt()
+        extra.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                Store.put(this@ClockActivity, "extraDim", p / 100f)
+                update(true)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) {}
+            override fun onStopTrackingTouch(sb: SeekBar) {}
+        })
+        box.addView(extra, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14); bottomMargin = dp(10) })
         box.addView(settingRow("Dim color", null,
             choice(listOf("red" to "Red", "amber" to "Amber", "grey" to "Grey"), Store.getStr(this, "dimColor", "red")) {
                 Store.put(this, "dimColor", it)

@@ -3,6 +3,10 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "2.1" to listOf(
+            "Extra dim: darken the clock further than the lowest screen brightness (Settings → Dim, or hold the Dim button)",
+            "Shortcut to the tablet's own Extra dim setting, which lowers the backlight itself"
+        ),
         "2.0.1" to listOf(
             "Sliders in Settings (dim brightness, alarm volume) are full size again"
         ),
