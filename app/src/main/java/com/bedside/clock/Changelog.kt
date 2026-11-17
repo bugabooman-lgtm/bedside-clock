@@ -3,6 +3,11 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "2.0" to listOf(
+            "Ambient light: the clock dims by itself when the room goes dark, using the tablet's light sensor, and brightens again when the lights come on",
+            "Choose when to dim: night hours or a dark room, dark room only, night hours only, or off",
+            "Choose how dark the room must be (lights off, very dim, dim lamp), and see the live light reading in Settings"
+        ),
         "1.9.3" to listOf(
             "Clock style is now a dropdown list in Settings (it had too many choices to fit)",
             "Other long lists (dial color, numbers, date window, surreal and slime colors) are dropdowns too",

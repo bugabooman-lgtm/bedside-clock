@@ -203,6 +203,7 @@ class ClockActivity : Activity() {
         weatherAt = 0L
         showBar()
         handler.removeCallbacks(tick)
+        Ambient.start(this)
         applyStyle()
         handler.post(tick)
         showWhatsNew()
@@ -224,6 +225,7 @@ class ClockActivity : Activity() {
 
     override fun onPause() {
         handler.removeCallbacks(tick)
+        Ambient.stop(this)
         super.onPause()
     }
 
@@ -457,7 +459,14 @@ class ClockActivity : Activity() {
         }
         sunrise.alpha = sun * 0.92f
 
-        val scheduledNight = Store.nightOn(this) && inRange(nowMin, Store.nightFrom(this), Store.nightTo(this))
+        Ambient.evaluate()
+        val hours = inRange(nowMin, Store.nightFrom(this), Store.nightTo(this))
+        val scheduledNight = when (Ambient.mode(this)) {
+            "either" -> hours || Ambient.dark
+            "light" -> Ambient.dark
+            "schedule" -> hours
+            else -> false
+        }
         // a manual Dim on/off lasts until the night schedule next starts or ends
         if (lastScheduled != null && lastScheduled != scheduledNight) dimOverride = null
         lastScheduled = scheduledNight

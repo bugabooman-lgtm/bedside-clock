@@ -23,12 +23,17 @@ class SettingsActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var locationLabel: TextView
     private lateinit var updStatus: TextView
+    private var luxLabel: TextView? = null
     private lateinit var installBtn: TextView
     private val statusTick = object : Runnable {
         override fun run() {
             if (Updater.busy && Updater.status.isNotEmpty()) updStatus.text = Updater.status
             else if (Updater.status.isNotEmpty() && !Updater.busy && Updater.status != lastShown) updStatus.text = Updater.status
             lastShown = updStatus.text.toString()
+            luxLabel?.let { l ->
+                val v = Ambient.lux
+                l.text = if (v < 0) "Reading…" else "${v.toInt()} lux — " + (if (Ambient.dark) "dark" else "light")
+            }
             handler.postDelayed(this, 1000)
         }
     }
@@ -197,10 +202,18 @@ class SettingsActivity : Activity() {
 
         // ---- dim ----
         section("Dim")
-        val nightSwitch = Switch(this)
-        nightSwitch.isChecked = Store.nightOn(this)
-        nightSwitch.setOnCheckedChangeListener { _, on -> Store.put(this, "nightOn", on) }
-        add(settingRow("Dim automatically at night", "The Dim button on the clock turns dimming on or off any time", nightSwitch))
+        add(settingRow("Dim automatically", "The Dim button on the clock still turns dimming on or off any time",
+            dropdown(Ambient.MODES, Ambient.mode(this)) { Store.put(this, "dimMode", it) }))
+        if (Ambient.available(this)) {
+            add(settingRow("Dark room means", "How dark the room must be before the clock dims. It waits 15 seconds before dimming and 4 seconds before brightening.",
+                choice(Ambient.SENSITIVITY.map { it.first to it.second }, Store.getStr(this, "dimSense", "dark")) {
+                    Store.put(this, "dimSense", it)
+                }))
+            luxLabel = tv("Reading…", 16f, Col.DIM)
+            add(settingRow("Room light now", "From the tablet's light sensor, next to the front camera", luxLabel))
+        } else {
+            add(settingRow("Light sensor", "This tablet didn't report a light sensor, so only night hours can be used", null))
+        }
         add(settingRow("Night starts", null, timeButton("nightFrom", Store.nightFrom(this))))
         add(settingRow("Night ends", null, timeButton("nightTo", Store.nightTo(this))))
         add(settingRow("Dim brightness", "How bright the screen is when dimmed (left = darkest). Tip: hold the Dim button on the clock to adjust while you watch.",
@@ -302,11 +315,13 @@ class SettingsActivity : Activity() {
     override fun onResume() {
         super.onResume()
         immersive()
+        Ambient.start(this)
         handler.post(statusTick)
     }
 
     override fun onPause() {
         handler.removeCallbacks(statusTick)
+        Ambient.stop(this)
         super.onPause()
     }
 
