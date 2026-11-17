@@ -3,6 +3,9 @@ package com.bedside.clock
 /** Newest first. Add an entry here and bump the VERSION file for each release. */
 object Changelog {
     val entries: List<Pair<String, List<String>>> = listOf(
+        "2.0.1" to listOf(
+            "Sliders in Settings (dim brightness, alarm volume) are full size again"
+        ),
         "2.0" to listOf(
             "Ambient light: the clock dims by itself when the room goes dark, using the tablet's light sensor, and brightens again when the lights come on",
             "Choose when to dim: night hours or a dark room, dark room only, night hours only, or off",

@@ -103,7 +103,11 @@ fun Context.settingRow(title: String, sub: String?, right: View?): LinearLayout 
     left.addView(tv(title, 19f))
     if (sub != null) left.addView(tv(sub, 14f, Col.DIM))
     row.addView(left, LinearLayout.LayoutParams(0, WRAP, 1f))
-    if (right != null) row.addView(right, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(16) })
+    if (right != null) {
+        // sliders have no natural width, so give them a fixed one (about 2 inches on the tablet)
+        val w = if (right is android.widget.SeekBar) dp(320) else WRAP
+        row.addView(right, LinearLayout.LayoutParams(w, WRAP).apply { leftMargin = dp(16) })
+    }
     return row
 }
 
